@@ -1,0 +1,34 @@
+{
+  "name": "oss-agent-harness-mcp",
+  "version": "0.1.0",
+  "description": "First-version MCP server exposing an OSS coding-agent harness.",
+  "type": "module",
+  "bin": {
+    "oss-agent-harness-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-policies.mjs",
+    "dev": "tsx src/server.ts",
+    "start": "node dist/server.js",
+    "telemetry:repair-report": "node dist/telemetry/repairReportCli.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "yaml": "^2.8.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

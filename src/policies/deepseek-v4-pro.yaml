@@ -1,0 +1,7 @@
+modelId: deepseek-v4-pro
+repairs:
+  - parseJsonArrayString
+  - bareStringToArray
+  - stripNullOptional
+  - markdownPathAutolinkUnwrap
+effectiveContextTokens: 100000

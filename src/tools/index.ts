@@ -1,0 +1,360 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ChatRouter } from "../router/chatRouter.js";
+import { compactContext } from "../context/compact.js";
+import { loadAllModelPolicies, loadModelPolicy } from "../policies/loader.js";
+import { repairToolInput } from "../repair/engine.js";
+import type { RepairToolInputResult } from "../repair/engine.js";
+import { sanitizeForResponse } from "../security/sanitize.js";
+import { queryTelemetry } from "../telemetry/query.js";
+import { createRepairTelemetryReport } from "../telemetry/repairReport.js";
+import type { TelemetrySink } from "../telemetry/types.js";
+import {
+  makeInvalidToolResponse,
+  type IssueLike
+} from "../validation/invalidResponse.js";
+import { normalizeToolInput } from "./normalizeToolInput.js";
+import type { NormalizeToolInputResult } from "./normalizeToolInput.js";
+import {
+  compactContextInputSchema,
+  getModelPolicyInputSchema,
+  ossChatInputSchema,
+  queryTelemetryInputSchema,
+  recordEvalEventInputSchema,
+  repairToolInputSchema,
+  suggestRepairPolicyInputSchema
+} from "./schemas.js";
+
+export interface ToolDependencies {
+  router: ChatRouter;
+  telemetry: TelemetrySink;
+}
+
+export function registerTools(server: McpServer, deps: ToolDependencies): void {
+  server.registerTool(
+    "oss_chat",
+    {
+      title: "OSS Chat",
+      description:
+        "Route a chat request through canonical OSS model IDs, provider priority, capability negotiation, and retryable fallback.",
+      inputSchema: ossChatInputSchema.shape
+    },
+    async (input) => {
+      const parsed = ossChatInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(deps, "oss_chat", parsed.error.issues, expectedShapes.oss_chat);
+      }
+
+      try {
+        return asJsonText(await deps.router.route(parsed.data));
+      } catch (error) {
+        return asJsonText(
+          {
+            error: error instanceof Error ? error.message : "oss_chat failed"
+          },
+          true
+        );
+      }
+    }
+  );
+
+  server.registerTool(
+    "repair_tool_input",
+    {
+      title: "Repair Tool Input",
+      description:
+        "Validate a tool input first, then apply model-policy repairs and validate again.",
+      inputSchema: repairToolInputSchema.shape
+    },
+    async (input) => {
+      const parsed = repairToolInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "repair_tool_input",
+          parsed.error.issues,
+          expectedShapes.repair_tool_input
+        );
+      }
+
+      const repairResult = repairToolInput(
+        parsed.data.modelId,
+        parsed.data.schemaName,
+        parsed.data.input,
+        {
+          sessionId: parsed.data.sessionId,
+          telemetry: deps.telemetry,
+          toolName: "repair_tool_input"
+        }
+      );
+
+      if (!repairResult.valid) {
+        return asJsonText(toRepairToolResponse(repairResult), true);
+      }
+
+      const normalizationResult = normalizeToolInput(
+        parsed.data.schemaName,
+        repairResult.data,
+        {
+          sessionId: parsed.data.sessionId,
+          modelId: parsed.data.modelId,
+          telemetry: deps.telemetry,
+          toolName: "repair_tool_input"
+        }
+      );
+
+      return asJsonText(toRepairToolResponse(repairResult, normalizationResult));
+    }
+  );
+
+  server.registerTool(
+    "compact_context",
+    {
+      title: "Compact Context",
+      description:
+        "Compact old context using effective model context tokens while preserving the in-flight task.",
+      inputSchema: compactContextInputSchema.shape
+    },
+    async (input) => {
+      const parsed = compactContextInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "compact_context",
+          parsed.error.issues,
+          expectedShapes.compact_context
+        );
+      }
+
+      return asJsonText(compactContext(parsed.data, deps.telemetry));
+    }
+  );
+
+  server.registerTool(
+    "get_model_policy",
+    {
+      title: "Get Model Policy",
+      description:
+        "Return repair policy and effective context token settings for canonical model IDs.",
+      inputSchema: getModelPolicyInputSchema.shape
+    },
+    async (input) => {
+      const parsed = getModelPolicyInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "get_model_policy",
+          parsed.error.issues,
+          expectedShapes.get_model_policy
+        );
+      }
+
+      return asJsonText(
+        parsed.data.modelId ? loadModelPolicy(parsed.data.modelId) : loadAllModelPolicies()
+      );
+    }
+  );
+
+  server.registerTool(
+    "record_eval_event",
+    {
+      title: "Record Eval Event",
+      description: "Record a harness evaluation event in telemetry.",
+      inputSchema: recordEvalEventInputSchema.shape
+    },
+    async (input) => {
+      const parsed = recordEvalEventInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "record_eval_event",
+          parsed.error.issues,
+          expectedShapes.record_eval_event
+        );
+      }
+
+      deps.telemetry.record({
+        type: "eval_event_recorded",
+        sessionId: parsed.data.sessionId,
+        modelId: parsed.data.modelId,
+        metadata: {
+          eventName: parsed.data.eventName,
+          outcome: parsed.data.outcome,
+          score: parsed.data.score,
+          metadata: parsed.data.metadata
+        }
+      });
+
+      return asJsonText({ recorded: true });
+    }
+  );
+
+  server.registerTool(
+    "query_telemetry",
+    {
+      title: "Query Telemetry",
+      description: "Query in-memory harness telemetry with bounded, redacted metadata.",
+      inputSchema: queryTelemetryInputSchema.shape
+    },
+    async (input) => {
+      const parsed = queryTelemetryInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "query_telemetry",
+          parsed.error.issues,
+          expectedShapes.query_telemetry
+        );
+      }
+
+      return asJsonText(queryTelemetry(deps.telemetry, parsed.data));
+    }
+  );
+
+  server.registerTool(
+    "suggest_repair_policy",
+    {
+      title: "Suggest Repair Policy",
+      description:
+        "Suggest per-model repair policy ordering from repair telemetry without editing YAML policies.",
+      inputSchema: suggestRepairPolicyInputSchema.shape
+    },
+    async (input) => {
+      const parsed = suggestRepairPolicyInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "suggest_repair_policy",
+          parsed.error.issues,
+          expectedShapes.suggest_repair_policy
+        );
+      }
+
+      const report = createRepairTelemetryReport(
+        queryTelemetry(deps.telemetry, {
+          type: "tool_input_repaired",
+          includeMetadata: true,
+          limit: 200
+        }).events
+      );
+
+      const suggestions = Object.entries(report.models)
+        .filter(([modelId]) => parsed.data.modelId === undefined || modelId === parsed.data.modelId)
+        .map(([modelId, suggestion]) => ({
+          modelId,
+          totalRepairEvents: suggestion.totalRepairEvents,
+          repairCounts: suggestion.repairCounts,
+          currentPolicyOrder: tryLoadPolicyRepairOrder(modelId),
+          suggestedRepairOrder: suggestion.suggestedRepairOrder
+        }));
+
+      return asJsonText({
+        suggestions,
+        note: "No YAML policies were modified."
+      });
+    }
+  );
+}
+
+function asJsonText(data: unknown, isError = false) {
+  const sanitized = sanitizeForResponse(data);
+
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(sanitized, null, 2)
+      }
+    ],
+    isError
+  };
+}
+
+function toRepairToolResponse(
+  repairResult: RepairToolInputResult,
+  normalizationResult?: NormalizeToolInputResult
+) {
+  const allNotes = [...repairResult.notes, ...(normalizationResult?.notes ?? [])];
+  const output =
+    normalizationResult?.valid && normalizationResult.data !== undefined
+      ? normalizationResult.data
+      : repairResult.data ?? repairResult.repairedInput;
+
+  return {
+    valid: repairResult.valid,
+    repaired: repairResult.repaired,
+    normalized: normalizationResult?.normalized ?? false,
+    schemaName: repairResult.schemaName,
+    modelId: repairResult.modelId,
+    repairsApplied: unique(
+      repairResult.notes
+        .filter((note) => note.code.startsWith("repair."))
+        .map((note) => note.code.replace(/^repair\./, ""))
+    ),
+    changedPaths: unique(allNotes.map((note) => note.path).filter(isString)),
+    notes: allNotes,
+    normalizationNotes: normalizationResult?.notes ?? [],
+    sanitizedOutputPreview: sanitizeForResponse(output, {
+      maxDepth: 3,
+      maxArrayLength: 10,
+      maxObjectKeys: 20,
+      maxStringLength: 160
+    }),
+    modelMessage: repairResult.modelMessage,
+    issues: repairResult.issues,
+    error: repairResult.error
+  };
+}
+
+const expectedShapes = {
+  oss_chat:
+    "{ modelId: canonicalModelId; sessionId: string; messages: ChatMessage[]; providerPriority?: ProviderId[]; capabilities?: CapabilityFlags; temperature?: number; maxTokens?: number; metadata?: object }",
+  repair_tool_input:
+    "{ modelId: canonicalModelId; schemaName: oss_chat | readFile | writeFile | pathBatch; input: unknown; sessionId?: string }",
+  compact_context:
+    "{ modelId: canonicalModelId; messages: ChatMessage[]; sessionId?: string; usedTokens?: nonnegative integer; inFlightTaskMessageIds?: string[] }",
+  get_model_policy: "{ modelId?: canonicalModelId }",
+  record_eval_event:
+    "{ eventName: string; sessionId?: string; modelId?: canonicalModelId; outcome?: pass | fail | skip | error; score?: number; metadata?: object }",
+  query_telemetry:
+    "{ type?: telemetryEventType; modelId?: canonicalModelId; providerId?: ProviderId; toolName?: string; sessionId?: string; limit?: 1..200; includeMetadata?: boolean }",
+  suggest_repair_policy: "{ modelId?: canonicalModelId }"
+} as const;
+
+function invalidToolInput(
+  deps: ToolDependencies,
+  toolName: string,
+  issues: readonly IssueLike[],
+  expectedShape: string
+) {
+  const response = makeInvalidToolResponse({
+    toolName,
+    issues,
+    expectedShape
+  });
+
+  deps.telemetry.record({
+    type: "tool_input_invalid",
+    toolName,
+    metadata: {
+      issues: response.issues
+    }
+  });
+
+  return asJsonText(response, true);
+}
+
+function tryLoadPolicyRepairOrder(modelId: string): string[] | undefined {
+  try {
+    return loadModelPolicy(modelId as never).repairs;
+  } catch {
+    return undefined;
+  }
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}

@@ -1,0 +1,9 @@
+providers:
+  providerOne:
+    stickySession:
+      header: X-Session-Id
+      strategy: raw
+  providerTwo:
+    stickySession:
+      header: X-Routing-Key
+      strategy: hash

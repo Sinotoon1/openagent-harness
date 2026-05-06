@@ -1,0 +1,6 @@
+modelId: deepseek-flash
+repairs:
+  - markdownPathAutolinkUnwrap
+  - parseJsonArrayString
+  - bareStringToArray
+effectiveContextTokens: 96000

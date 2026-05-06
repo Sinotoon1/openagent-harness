@@ -1,0 +1,7 @@
+modelId: kimi-k2-6
+repairs:
+  - emptyObjectToArray
+  - parseJsonArrayString
+  - bareStringToArray
+  - stripNullOptional
+effectiveContextTokens: 96000
