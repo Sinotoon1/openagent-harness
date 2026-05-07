@@ -3,8 +3,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { z } from "zod";
-import type { ProviderId } from "../types.js";
-import { providerIds } from "../types.js";
+import type { CanonicalModelId, ProviderId } from "../types.js";
+import { canonicalModelIds, providerIds } from "../types.js";
 
 export const stickySessionStrategies = ["raw", "hash"] as const;
 
@@ -17,16 +17,54 @@ const stickySessionSchema = z
   })
   .strict();
 
-const providerConfigFileSchema = z
+const envVarNameSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Z_][A-Z0-9_]*$/, "must be an environment variable name");
+
+const providerConfigSchema = z
   .object({
-    providers: z.record(
-      z.enum(providerIds),
+    id: z.enum(providerIds),
+    baseUrlEnv: envVarNameSchema,
+    authEnvVar: envVarNameSchema,
+    stickySession: stickySessionSchema,
+    modelSlugs: z.record(
+      z.enum(canonicalModelIds),
       z
         .object({
-          stickySession: stickySessionSchema
+          env: envVarNameSchema.optional(),
+          default: z.string().min(1)
         })
         .strict()
     )
+  })
+  .strict();
+
+const providerConfigFileSchema = z
+  .object({
+    providers: z.array(providerConfigSchema).min(1)
+  })
+  .superRefine((config, context) => {
+    const seen = new Set<ProviderId>();
+    for (const [index, provider] of config.providers.entries()) {
+      if (seen.has(provider.id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["providers", index, "id"],
+          message: `duplicate provider id: ${provider.id}`
+        });
+      }
+      seen.add(provider.id);
+    }
+    for (const providerId of providerIds) {
+      if (!seen.has(providerId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["providers"],
+          message: `missing provider id: ${providerId}`
+        });
+      }
+    }
   })
   .strict();
 
@@ -40,18 +78,39 @@ export interface ProviderRuntimeConfig {
   stickySession: StickySessionConfig;
 }
 
-export type ProviderRuntimeConfigMap = Record<ProviderId, ProviderRuntimeConfig>;
+export interface ProviderModelSlugConfig {
+  env?: string;
+  default: string;
+}
+
+export interface ProviderRuntimeDefinition extends ProviderRuntimeConfig {
+  baseUrlEnv: string;
+  authEnvVar: string;
+  modelSlugs: Record<CanonicalModelId, ProviderModelSlugConfig>;
+}
+
+export type ProviderRuntimeConfigMap = Record<ProviderId, ProviderRuntimeDefinition>;
+
+export class ProviderConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderConfigError";
+  }
+}
 
 export function loadProviderRuntimeConfigs(): ProviderRuntimeConfigMap {
   const raw = readFileSync(resolveProviderConfigPath(), "utf8");
-  const parsed = providerConfigFileSchema.parse(YAML.parse(raw));
+  return parseProviderRuntimeConfigs(YAML.parse(raw));
+}
 
-  return providerIds.reduce((configs, providerId) => {
-    const provider = parsed.providers[providerId];
-    configs[providerId] = {
-      id: providerId,
-      stickySession: provider.stickySession
-    };
+export function parseProviderRuntimeConfigs(rawConfig: unknown): ProviderRuntimeConfigMap {
+  const parsed = providerConfigFileSchema.safeParse(rawConfig);
+  if (!parsed.success) {
+    throw new ProviderConfigError(formatProviderConfigIssues(parsed.error.issues));
+  }
+
+  return parsed.data.providers.reduce((configs, provider) => {
+    configs[provider.id] = provider;
     return configs;
   }, {} as ProviderRuntimeConfigMap);
 }
@@ -66,8 +125,17 @@ function resolveProviderConfigPath(): string {
 
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) {
-    throw new Error("Provider config file not found");
+    throw new ProviderConfigError("Provider config file not found");
   }
 
   return found;
+}
+
+function formatProviderConfigIssues(issues: z.core.$ZodIssue[]): string {
+  const details = issues.map((issue) => {
+    const path = issue.path.length ? issue.path.join(".") : "<root>";
+    return `${path}: ${issue.message}`;
+  });
+
+  return `Provider config is invalid: ${details.join("; ")}`;
 }

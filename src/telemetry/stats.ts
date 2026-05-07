@@ -243,7 +243,7 @@ function summarizeTelemetryWindow(
       byMode: contextByMode
     },
     caveats: [
-      "telemetry is in-memory only",
+      "telemetry may be in-memory or local JSONL depending on configuration",
       "stats are based on the bounded latest telemetry window"
     ]
   };

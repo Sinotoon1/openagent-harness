@@ -1,19 +1,21 @@
-import type { CapabilityFlags } from "../types.js";
-import type { ProviderRuntimeConfigMap } from "./config.js";
+import type { CapabilityFlags, ProviderId } from "../types.js";
+import { canonicalModelIds, providerIds } from "../types.js";
+import type { ProviderRuntimeConfigMap, ProviderRuntimeDefinition } from "./config.js";
 import { loadProviderRuntimeConfigs } from "./config.js";
 import { OpenAICompatibleProviderAdapter } from "./openAiCompatible.js";
 import type { ProviderAdapter } from "./types.js";
 
-const providerOneCapabilities: Required<CapabilityFlags> = {
-  zeroDataRetention: true,
-  disallowPromptTraining: true,
-  thinking: true
-};
-
-const providerTwoCapabilities: Required<CapabilityFlags> = {
-  zeroDataRetention: true,
-  disallowPromptTraining: false,
-  thinking: true
+const providerCapabilities: Record<ProviderId, Required<CapabilityFlags>> = {
+  providerOne: {
+    zeroDataRetention: true,
+    disallowPromptTraining: true,
+    thinking: true
+  },
+  providerTwo: {
+    zeroDataRetention: true,
+    disallowPromptTraining: false,
+    thinking: true
+  }
 };
 
 export function createProviderAdaptersFromEnv(
@@ -22,43 +24,36 @@ export function createProviderAdaptersFromEnv(
 ): ProviderAdapter[] {
   const adapters: ProviderAdapter[] = [];
 
-  if (env.PROVIDER_ONE_BASE_URL) {
-    adapters.push(
-      new OpenAICompatibleProviderAdapter({
-        id: "providerOne",
-        baseUrl: env.PROVIDER_ONE_BASE_URL,
-        apiKey: env.PROVIDER_ONE_API_KEY,
-        providerConfig: providerConfigs.providerOne,
-        capabilities: providerOneCapabilities,
-        modelSlugs: {
-          "kimi-k2-6": env.PROVIDER_ONE_KIMI_K2_6_SLUG ?? "kimi-k2-6",
-          "deepseek-v4-pro":
-            env.PROVIDER_ONE_DEEPSEEK_V4_PRO_SLUG ?? "deepseek-v4-pro",
-          "deepseek-flash":
-            env.PROVIDER_ONE_DEEPSEEK_FLASH_SLUG ?? "deepseek-flash"
-        }
-      })
-    );
-  }
+  for (const providerId of providerIds) {
+    const providerConfig = providerConfigs[providerId];
+    const baseUrl = env[providerConfig.baseUrlEnv];
+    if (!baseUrl) {
+      continue;
+    }
 
-  if (env.PROVIDER_TWO_BASE_URL) {
     adapters.push(
       new OpenAICompatibleProviderAdapter({
-        id: "providerTwo",
-        baseUrl: env.PROVIDER_TWO_BASE_URL,
-        apiKey: env.PROVIDER_TWO_API_KEY,
-        providerConfig: providerConfigs.providerTwo,
-        capabilities: providerTwoCapabilities,
-        modelSlugs: {
-          "kimi-k2-6": env.PROVIDER_TWO_KIMI_K2_6_SLUG ?? "kimi-k2-6",
-          "deepseek-v4-pro":
-            env.PROVIDER_TWO_DEEPSEEK_V4_PRO_SLUG ?? "deepseek-v4-pro",
-          "deepseek-flash":
-            env.PROVIDER_TWO_DEEPSEEK_FLASH_SLUG ?? "deepseek-flash"
-        }
+        id: providerId,
+        baseUrl,
+        apiKey: env[providerConfig.authEnvVar],
+        providerConfig,
+        capabilities: providerCapabilities[providerId],
+        modelSlugs: resolveModelSlugs(providerConfig, env)
       })
     );
   }
 
   return adapters;
+}
+
+function resolveModelSlugs(
+  providerConfig: ProviderRuntimeDefinition,
+  env: NodeJS.ProcessEnv
+) {
+  return Object.fromEntries(
+    canonicalModelIds.map((modelId) => {
+      const slugConfig = providerConfig.modelSlugs[modelId];
+      return [modelId, slugConfig.env ? env[slugConfig.env] ?? slugConfig.default : slugConfig.default];
+    })
+  );
 }

@@ -34,8 +34,8 @@ All major P0 architecture from the audit is implemented:
 - `compact_context`: compacts against effective context tokens, never advertised context.
 - `get_model_policy`: returns YAML-backed policy for one or all canonical models.
 - `record_eval_event`: records evaluation telemetry.
-- `query_telemetry`: queries in-memory telemetry with bounded, redacted metadata.
-- `get_harness_stats`: summarizes recent sanitized in-memory telemetry.
+- `query_telemetry`: queries configured telemetry with bounded, redacted metadata.
+- `get_harness_stats`: summarizes recent sanitized telemetry.
 - `suggest_repair_policy`: suggests repair policy order from repair telemetry without editing YAML.
 
 Canonical model IDs used internally:
@@ -68,20 +68,53 @@ PROVIDER_TWO_DEEPSEEK_V4_PRO_SLUG=...
 PROVIDER_TWO_DEEPSEEK_FLASH_SLUG=...
 ```
 
-Sticky session headers are configured in `src/providers/providers.yaml` and copied to
-`dist/providers/providers.yaml` during build:
+Provider metadata is configured in `src/providers/providers.yaml` and copied to
+`dist/providers/providers.yaml` during build. The loader validates provider IDs,
+base URL environment variable names, auth environment variable names, sticky
+session strategies, duplicate provider IDs, and model slug mappings. API key
+values are read from the named environment variables at runtime and are not
+required for tests.
 
 ```yaml
 providers:
-  providerOne:
+  - id: providerOne
+    baseUrlEnv: PROVIDER_ONE_BASE_URL
+    authEnvVar: PROVIDER_ONE_API_KEY
     stickySession:
       header: X-Session-Id
       strategy: raw
-  providerTwo:
+    modelSlugs:
+      kimi-k2-6:
+        env: PROVIDER_ONE_KIMI_K2_6_SLUG
+        default: kimi-k2-6
+      deepseek-v4-pro:
+        env: PROVIDER_ONE_DEEPSEEK_V4_PRO_SLUG
+        default: deepseek-v4-pro
+      deepseek-flash:
+        env: PROVIDER_ONE_DEEPSEEK_FLASH_SLUG
+        default: deepseek-flash
+  - id: providerTwo
+    baseUrlEnv: PROVIDER_TWO_BASE_URL
+    authEnvVar: PROVIDER_TWO_API_KEY
     stickySession:
       header: X-Routing-Key
       strategy: hash
+    modelSlugs:
+      kimi-k2-6:
+        env: PROVIDER_TWO_KIMI_K2_6_SLUG
+        default: kimi-k2-6
+      deepseek-v4-pro:
+        env: PROVIDER_TWO_DEEPSEEK_V4_PRO_SLUG
+        default: deepseek-v4-pro
+      deepseek-flash:
+        env: PROVIDER_TWO_DEEPSEEK_FLASH_SLUG
+        default: deepseek-flash
 ```
+
+Provider names are placeholders until their `*_BASE_URL` and optional API key
+environment variables point at real OpenAI-compatible services. See
+[`docs/provider-matrix.md`](docs/provider-matrix.md) for provider smoke-test
+guidance.
 
 ## Hardening behavior
 
@@ -119,23 +152,34 @@ and only edits fields reported by validation. For example, markdown path
 auto-link unwrapping can run for configured `pathString` fields and path arrays,
 but it will not touch `writeFile.content` or any other non-issue field.
 
-Telemetry is held in memory for this v1 candidate and resets on process restart.
-Metadata is sanitized at the
+Telemetry uses the memory sink by default and resets on process restart. An
+optional JSONL sink can persist sanitized events to a local file:
+
+```bash
+OSS_HARNESS_TELEMETRY_SINK=memory
+
+OSS_HARNESS_TELEMETRY_SINK=jsonl
+OSS_HARNESS_TELEMETRY_JSONL_PATH=D:/logs/oss-agent-harness/telemetry.jsonl
+```
+
+The JSONL sink creates the file if it is missing and writes one sanitized event
+per line. It is durable local-file telemetry for debugging and audits, not
+billing, SLA, or managed observability telemetry. Metadata is sanitized at the
 telemetry sink boundary and again before MCP responses. Secret-shaped keys such
 as `apiKey`, `authorization`, `token`, `secret`, `password`, `bearer`,
 `credential`, `cookie`, and `session` are redacted with `<redacted>`. Nested
 structures are depth-limited, arrays and object keys are bounded, and long
 strings are truncated.
 
-Raw top-level `sessionId` values are not stored in telemetry. The in-memory sink
-stores a deterministic SHA-256 `sessionIdHash` instead, and `query_telemetry`
-continues to support filtering by `sessionId` by hashing the query value before
-matching. Set `OSS_HARNESS_TELEMETRY_SALT` in deployments so session hashes are
-salted; without a salt they remain deterministic but are easier to compare
-across environments. `sessionIdHash` is generated internally, and caller-provided
-`sessionIdHash` values are not trusted or stored. The telemetry salt is read at
-process startup/module initialization; changing it requires a process restart and
-invalidates matching against previously stored in-memory telemetry.
+Raw top-level `sessionId` values are not stored in telemetry. Sinks store a
+deterministic SHA-256 `sessionIdHash` instead, and `query_telemetry` continues to
+support filtering by `sessionId` by hashing the query value before matching. Set
+`OSS_HARNESS_TELEMETRY_SALT` in deployments so session hashes are salted; without
+a salt they remain deterministic but are easier to compare across environments.
+`sessionIdHash` is generated internally, and caller-provided `sessionIdHash`
+values are not trusted or stored. The telemetry salt is read at process
+startup/module initialization; changing it requires a process restart and
+invalidates matching against previously stored telemetry.
 
 Metadata uses a denylist for risky payload fields. Keys such as `messages`,
 `content`, `fileContent`, `fileContents`, `command`, `stdout`, `stderr`,
@@ -149,8 +193,8 @@ filters are hashed before matching and metadata remains sanitized. It reports
 tool input invalid/repair/normalization counts, repair breakdowns, provider
 fallbacks, streaming classifications, cache warmth hints, and context compaction
 counts without returning raw metadata, raw sessions, messages, headers, commands,
-file contents, or secrets. These stats are in-memory only, reset on process
-restart, and summarize only the latest bounded window rather than durable history.
+file contents, or secrets. These stats summarize only the latest bounded window
+rather than full telemetry history.
 
 The OpenAI-compatible provider adapter supports OpenAI-style SSE streaming when
 `streaming.enabled=true`, while preserving the existing non-streaming
@@ -193,8 +237,9 @@ The same suggestion loop is exposed through MCP:
 ```
 
 Repair-policy suggestions are based on the bounded latest-200 telemetry window,
-not full historical aggregation. Durable telemetry storage is not implemented
-yet, and suggestion tools do not edit YAML policies.
+not full historical aggregation, and suggestion tools do not edit YAML policies.
+When JSONL telemetry is enabled, suggestions can read from the local JSONL file
+through the same bounded query path.
 
 ## Usage examples
 
@@ -266,7 +311,8 @@ collected output after the provider stream completes.
 }
 ```
 
-The result is based on in-memory telemetry and the latest bounded window only.
+The result is based on the configured telemetry sink and the latest bounded
+window only.
 
 ### `suggest_repair_policy`
 
@@ -389,3 +435,29 @@ In `.vscode/mcp.json`:
   }
 }
 ```
+
+## Release hygiene
+
+This candidate is prepared for the `v1.0.0-candidate.4` prerelease line. Before
+publishing to npm, verify that `package.json`, `package-lock.json`, and the git
+tag use the same candidate version. Do not publish automatically from this
+repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.4 release notes:
+
+- Adds optional JSONL telemetry via `OSS_HARNESS_TELEMETRY_SINK=memory|jsonl`.
+- Keeps memory telemetry as the default sink.
+- Uses `OSS_HARNESS_TELEMETRY_JSONL_PATH` as the required local file path when JSONL is enabled.
+- JSONL writes sanitized telemetry events only, one event per line.
+- Raw `sessionId` is replaced by `sessionIdHash`.
+- `query_telemetry`, `get_harness_stats`, and `suggest_repair_policy` work with memory and JSONL sinks.
+- Missing or empty JSONL files return empty telemetry results safely.
+- Malformed JSONL lines are skipped safely.
+
+Candidate.4 caveats:
+
+- JSONL is local debug/audit telemetry, not managed observability.
+- JSONL reads currently read the full file before applying bounded returned-window limits.
+- Malformed JSONL lines are skipped silently.
+- No rotation, file locking, or multi-process write coordination is included.
+- Configured JSONL files should be treated as internal telemetry files, not arbitrary trusted import files.

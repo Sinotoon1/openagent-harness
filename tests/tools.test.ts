@@ -387,7 +387,9 @@ describe("MCP tools", () => {
     expect(result.streaming.success).toBe(0);
     expect(result.cache).toEqual({ likelyWarm: 0, likelyCold: 0, warmRate: 0 });
     expect(result.context.compactions).toBe(0);
-    expect(result.caveats).toContain("telemetry is in-memory only");
+    expect(result.caveats).toContain(
+      "telemetry may be in-memory or local JSONL depending on configuration"
+    );
     expect(result.caveats).toContain("stats are based on the bounded latest telemetry window");
   });
 
@@ -591,5 +593,124 @@ describe("MCP tools", () => {
     expect(response).not.toContain("raw-authorization-value");
     expect(response).not.toContain("raw prompt content");
     expect(response).not.toContain("stats-secret-session");
+  });
+
+  it("hides provider counts and provider breakdowns when includeProviders is false", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "provider_fallback",
+      modelId: "deepseek-v4-pro",
+      providerId: "providerOne",
+      metadata: {
+        fromProvider: "providerOne",
+        toProvider: "providerTwo",
+        fallbackPhase: "before_first_token"
+      }
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const response =
+      (await handlers.get("get_harness_stats")?.({ includeProviders: false }))?.content[0]?.text ??
+      "";
+    const result = JSON.parse(response) as {
+      totals: { events: number; providers: number };
+      routing: {
+        fallbacks: number;
+        byProvider: Record<string, number>;
+        byPhase: Record<string, number>;
+      };
+    };
+
+    expect(result.totals).toEqual({ events: 1, models: 1, providers: 0 });
+    expect(result.routing.fallbacks).toBe(1);
+    expect(result.routing.byProvider).toEqual({});
+    expect(result.routing.byPhase.beforeFirstToken).toBe(1);
+    expect(response).not.toContain("providerOne");
+    expect(response).not.toContain("providerTwo");
+  });
+
+  it("filters harness stats by eventType and leaves partial repair rates explicit", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "tool_input_invalid",
+      modelId: "kimi-k2-6",
+      toolName: "repair_tool_input"
+    });
+    telemetry.record({
+      type: "tool_input_repaired",
+      modelId: "kimi-k2-6",
+      toolName: "repair_tool_input",
+      metadata: {
+        repairs: ["bareStringToArray"]
+      }
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult(
+      (await handlers.get("get_harness_stats")?.({ eventType: "tool_input_repaired" }))!
+    ) as {
+      totals: { events: number };
+      toolInputs: { invalid: number; repaired: number; repairSuccessRate: number };
+      repairs: { byRepair: Record<string, number> };
+    };
+
+    expect(result.totals.events).toBe(1);
+    expect(result.toolInputs).toEqual({
+      invalid: 0,
+      repaired: 1,
+      normalized: 0,
+      repairSuccessRate: 0
+    });
+    expect(result.repairs.byRepair.bareStringToArray).toBe(1);
+  });
+
+  it("counts streaming empty, malformed, incomplete, and after-token failure classifications", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "eval_event_recorded",
+      modelId: "kimi-k2-6",
+      metadata: {
+        streamingStatus: "empty"
+      }
+    });
+    telemetry.record({
+      type: "eval_event_recorded",
+      modelId: "kimi-k2-6",
+      metadata: {
+        streamingStatus: "malformed"
+      }
+    });
+    telemetry.record({
+      type: "eval_event_recorded",
+      modelId: "kimi-k2-6",
+      metadata: {
+        streamingStatus: "incomplete"
+      }
+    });
+    telemetry.record({
+      type: "eval_event_recorded",
+      modelId: "kimi-k2-6",
+      metadata: {
+        streamingFailure: true,
+        fallbackPhase: "after_first_token"
+      }
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult((await handlers.get("get_harness_stats")?.({}))!) as {
+      streaming: {
+        empty: number;
+        malformed: number;
+        incomplete: number;
+        failuresAfterFirstToken: number;
+        failuresBeforeFirstToken: number;
+      };
+    };
+
+    expect(result.streaming.empty).toBe(1);
+    expect(result.streaming.malformed).toBe(1);
+    expect(result.streaming.incomplete).toBe(1);
+    expect(result.streaming.failuresAfterFirstToken).toBe(1);
+    expect(result.streaming.failuresBeforeFirstToken).toBe(0);
   });
 });

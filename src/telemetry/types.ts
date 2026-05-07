@@ -31,8 +31,23 @@ export interface TelemetryEvent {
   metadata?: Record<string, unknown>;
 }
 
+export interface TelemetryFilter {
+  type?: TelemetryEventType;
+  modelId?: string;
+  providerId?: string;
+  toolName?: string;
+  sessionIdHash?: string;
+  limit?: number;
+}
+
+export interface TelemetryQueryWindow {
+  total: number;
+  events: TelemetryEvent[];
+}
+
 export interface TelemetrySink {
   record(event: Omit<TelemetryEvent, "timestamp">): void;
+  query(filter: TelemetryFilter): TelemetryQueryWindow;
 }
 
 export interface TelemetryReadable extends TelemetrySink {

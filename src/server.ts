@@ -4,15 +4,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createProviderAdaptersFromEnv } from "./providers/registry.js";
 import { ChatRouter } from "./router/chatRouter.js";
-import { defaultTelemetrySink } from "./telemetry/memory.js";
+import { createTelemetrySinkFromEnv } from "./telemetry/config.js";
 import { registerTools } from "./tools/index.js";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: "oss-agent-harness-mcp",
-    version: "0.1.0"
+    version: "1.0.0-candidate.4"
   });
-  const telemetry = defaultTelemetrySink;
+  const telemetry = createTelemetrySinkFromEnv();
   const router = new ChatRouter(createProviderAdaptersFromEnv(), telemetry);
 
   registerTools(server, {

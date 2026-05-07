@@ -1,9 +1,33 @@
 providers:
-  providerOne:
+  - id: providerOne
+    baseUrlEnv: PROVIDER_ONE_BASE_URL
+    authEnvVar: PROVIDER_ONE_API_KEY
     stickySession:
       header: X-Session-Id
       strategy: raw
-  providerTwo:
+    modelSlugs:
+      kimi-k2-6:
+        env: PROVIDER_ONE_KIMI_K2_6_SLUG
+        default: kimi-k2-6
+      deepseek-v4-pro:
+        env: PROVIDER_ONE_DEEPSEEK_V4_PRO_SLUG
+        default: deepseek-v4-pro
+      deepseek-flash:
+        env: PROVIDER_ONE_DEEPSEEK_FLASH_SLUG
+        default: deepseek-flash
+  - id: providerTwo
+    baseUrlEnv: PROVIDER_TWO_BASE_URL
+    authEnvVar: PROVIDER_TWO_API_KEY
     stickySession:
       header: X-Routing-Key
       strategy: hash
+    modelSlugs:
+      kimi-k2-6:
+        env: PROVIDER_TWO_KIMI_K2_6_SLUG
+        default: kimi-k2-6
+      deepseek-v4-pro:
+        env: PROVIDER_TWO_DEEPSEEK_V4_PRO_SLUG
+        default: deepseek-v4-pro
+      deepseek-flash:
+        env: PROVIDER_TWO_DEEPSEEK_FLASH_SLUG
+        default: deepseek-flash
