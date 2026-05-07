@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ChatRouter } from "../router/chatRouter.js";
 import { compactContext } from "../context/compact.js";
+import { runPolicyDoctor } from "../diagnostics/policyDoctor.js";
 import { inspectModelPolicies } from "../policies/inspect.js";
 import { loadAllModelPolicies, loadModelPolicy } from "../policies/loader.js";
 import { repairToolInput, repairToolInputWithSpec } from "../repair/engine.js";
@@ -32,6 +33,7 @@ import {
   queryTelemetryInputSchema,
   recordEvalEventInputSchema,
   repairToolInputSchema,
+  runPolicyDoctorInputSchema,
   suggestRepairPolicyInputSchema
 } from "./schemas.js";
 
@@ -276,6 +278,59 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
+    "run_policy_doctor",
+    {
+      title: "Run Policy Doctor",
+      description:
+        "Return a sanitized, read-only harness health report for policies, provider config, and telemetry suggestions.",
+      inputSchema: runPolicyDoctorInputSchema.shape
+    },
+    async (input) => {
+      const parsed = runPolicyDoctorInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInputWithoutTelemetry(
+          "run_policy_doctor",
+          parsed.error.issues,
+          expectedShapes.run_policy_doctor
+        );
+      }
+
+      const modelId = parsed.data.modelId;
+      if (modelId !== undefined && !isCanonicalModelId(modelId)) {
+        return invalidToolInputWithoutTelemetry(
+          "run_policy_doctor",
+          [
+            {
+              code: "invalid_value",
+              path: ["modelId"],
+              message: `Unknown modelId ${modelId}. Expected one of: ${canonicalModelIds.join(", ")}.`
+            }
+          ],
+          expectedShapes.run_policy_doctor
+        );
+      }
+
+      const doctorInput =
+        modelId === undefined
+          ? {
+              includeTelemetry: parsed.data.includeTelemetry,
+              includeProviderConfig: parsed.data.includeProviderConfig,
+              includeSuggestions: parsed.data.includeSuggestions,
+              severity: parsed.data.severity
+            }
+          : {
+              modelId,
+              includeTelemetry: parsed.data.includeTelemetry,
+              includeProviderConfig: parsed.data.includeProviderConfig,
+              includeSuggestions: parsed.data.includeSuggestions,
+              severity: parsed.data.severity
+            };
+
+      return asJsonText(runPolicyDoctor(doctorInput, { telemetry: deps.telemetry }));
+    }
+  );
+
+  server.registerTool(
     "record_eval_event",
     {
       title: "Record Eval Event",
@@ -474,6 +529,8 @@ const expectedShapes = {
   get_model_policy: "{ modelId?: canonicalModelId }",
   inspect_model_policies:
     "{ modelId?: string; includeProviders?: boolean; includeRepairs?: boolean; includeContext?: boolean; includeOverrides?: boolean; includeWarnings?: boolean }",
+  run_policy_doctor:
+    "{ modelId?: string; includeTelemetry?: boolean; includeProviderConfig?: boolean; includeSuggestions?: boolean; severity?: info | warning | error }",
   record_eval_event:
     "{ eventName: string; sessionId?: string; modelId?: canonicalModelId; outcome?: pass | fail | skip | error; score?: number; metadata?: object }",
   query_telemetry:
@@ -504,6 +561,21 @@ function invalidToolInput(
   });
 
   return asJsonText(response, true);
+}
+
+function invalidToolInputWithoutTelemetry(
+  toolName: string,
+  issues: readonly IssueLike[],
+  expectedShape: string
+) {
+  return asJsonText(
+    makeInvalidToolResponse({
+      toolName,
+      issues,
+      expectedShape
+    }),
+    true
+  );
 }
 
 function tryLoadPolicyRepairOrder(modelId: string): string[] | undefined {

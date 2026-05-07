@@ -91,6 +91,7 @@ All major P0 architecture from the audit is implemented:
 - `compact_context`: compacts against effective context tokens, never advertised context.
 - `get_model_policy`: returns YAML-backed policy for one or all canonical models.
 - `inspect_model_policies`: returns sanitized, read-only policy summaries with validation warnings; it does not edit policy YAML.
+- `run_policy_doctor`: returns a sanitized, read-only policy and harness health report; it does not edit YAML, auto-apply suggestions, or perform live provider/account/credential validation.
 - `record_eval_event`: records local harness notes/telemetry only, not full eval-platform or experiment-tracker state.
 - `query_telemetry`: queries configured local harness telemetry with bounded, redacted metadata.
 - `get_harness_stats`: summarizes recent sanitized harness health telemetry, not billing or SLA observability.
@@ -191,6 +192,26 @@ context, provider overrides, and warnings. Policy inspection is meant to make
 model-specific harness behavior easier to update in YAML/config without changing
 TypeScript logic. It does not auto-apply suggestions, validate live provider
 accounts, or add eval-platform behavior.
+
+Use `run_policy_doctor` for a read-only harness health check across loaded model
+policies, static provider config, provider overrides, repair names, context
+settings, and telemetry-driven repair suggestions. The doctor returns a
+structured `status`, summary counts, and severity-filterable issues. It does not
+write policy YAML, provider config, telemetry, package, or generated files; it
+does not auto-apply policy suggestions; and it does not perform live provider,
+account, quota, credential, or base URL validation.
+
+Example:
+
+```json
+{
+  "modelId": "deepseek-v4-pro",
+  "includeTelemetry": true,
+  "includeProviderConfig": true,
+  "includeSuggestions": true,
+  "severity": "warning"
+}
+```
 
 Provider overrides intentionally support only a small capability policy shape:
 
@@ -670,10 +691,18 @@ In `.vscode/mcp.json`:
 
 ## Release hygiene
 
-This candidate is prepared for the `v1.0.0-candidate.13` prerelease line. Before
+This candidate is prepared for the `v1.0.0-candidate.14` prerelease line. Before
 publishing to npm, verify that `package.json`, `package-lock.json`, and the git
 tag use the same candidate version. Do not publish automatically from this
 repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.14 release notes:
+
+- Adds the read-only `run_policy_doctor` MCP tool for policy, provider config, provider override, context, and telemetry suggestion consistency checks.
+- Returns sanitized structured reports with `ok`, `warning`, or `error` status, summary counts, and severity-filterable issues.
+- Reports missing provider base URL environment values as info-level disabled-provider caveats, not credential or account validation.
+- Keeps policy suggestions review-only: no YAML, provider config, telemetry, package, or generated files are written and no apply tool is added.
+- Preserves repair behavior, provider routing, streaming, telemetry sinks, JSONL behavior, security sanitization, session hashing, context compaction, policy loading, provider config behavior, MCP tool names, and caller-provided schema descriptor behavior.
 
 Candidate.13 release notes:
 

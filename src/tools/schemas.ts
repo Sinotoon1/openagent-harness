@@ -47,6 +47,16 @@ export const inspectModelPoliciesInputSchema = z
   })
   .strict();
 
+export const runPolicyDoctorInputSchema = z
+  .object({
+    modelId: z.string().min(1).optional(),
+    includeTelemetry: z.boolean().default(true),
+    includeProviderConfig: z.boolean().default(true),
+    includeSuggestions: z.boolean().default(true),
+    severity: z.enum(["info", "warning", "error"]).optional()
+  })
+  .strict();
+
 export const recordEvalEventInputSchema = z
   .object({
     sessionId: z.string().optional(),

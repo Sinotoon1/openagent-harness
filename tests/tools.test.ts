@@ -1,18 +1,30 @@
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ChatRouter } from "../src/router/chatRouter.js";
 import { registerTools } from "../src/tools/index.js";
+import { JsonlTelemetrySink } from "../src/telemetry/jsonl.js";
 import { InMemoryTelemetrySink } from "../src/telemetry/memory.js";
 import { createReviewableRepairPolicySuggestions } from "../src/telemetry/repairPolicySuggestions.js";
 import { hashSessionId, hashSessionIdWithSalt } from "../src/security/sessionHash.js";
+import type { TelemetrySink } from "../src/telemetry/types.js";
 
 type ToolHandler = (input: unknown) => Promise<{
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 }>;
 
-function makeRegisteredTools(telemetry = new InMemoryTelemetrySink()) {
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function makeRegisteredTools(telemetry: TelemetrySink = new InMemoryTelemetrySink()) {
   const handlers = new Map<string, ToolHandler>();
   const server = {
     registerTool(name: string, _config: unknown, handler: ToolHandler) {
@@ -74,6 +86,12 @@ describe("MCP tools", () => {
     const { handlers } = makeRegisteredTools();
 
     expect(handlers.has("inspect_model_policies")).toBe(true);
+  });
+
+  it("registers run_policy_doctor", () => {
+    const { handlers } = makeRegisteredTools();
+
+    expect(handlers.has("run_policy_doctor")).toBe(true);
   });
 
   it("lists all model policies through inspect_model_policies", async () => {
@@ -198,6 +216,93 @@ describe("MCP tools", () => {
     expect(body.error.modelMessage).toBe(body.modelMessage);
   });
 
+  it("returns a structured invalid response for unknown run_policy_doctor modelId", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = await handlers.get("run_policy_doctor")?.({
+      modelId: "not-a-model"
+    });
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      modelMessage: string;
+      issues: Array<{ path: string; message: string }>;
+      error: { toolName: string; modelMessage: string };
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.modelMessage).toContain("Tool run_policy_doctor input is invalid.");
+    expect(body.issues[0]?.path).toBe("modelId");
+    expect(body.issues[0]?.message).toContain("Unknown modelId not-a-model.");
+    expect(body.error.toolName).toBe("run_policy_doctor");
+    expect(body.error.modelMessage).toBe(body.modelMessage);
+    expect(telemetry.getEvents()).toHaveLength(0);
+  });
+
+  it("returns a structured invalid response without telemetry for invalid run_policy_doctor schema input", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = await handlers.get("run_policy_doctor")?.({
+      includeTelemetry: "yes"
+    });
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      modelMessage: string;
+      issues: Array<{ path: string; message: string }>;
+      error: { code: string; toolName: string; modelMessage: string };
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.modelMessage).toContain("Tool run_policy_doctor input is invalid.");
+    expect(body.issues[0]?.path).toBe("includeTelemetry");
+    expect(body.error.code).toBe("tool_input_invalid");
+    expect(body.error.toolName).toBe("run_policy_doctor");
+    expect(body.error.modelMessage).toBe(body.modelMessage);
+    expect(telemetry.getEvents()).toHaveLength(0);
+  });
+
+  it("does not append JSONL telemetry for invalid run_policy_doctor schema input", async () => {
+    const telemetryPath = tempTelemetryPath();
+    const telemetry = new JsonlTelemetrySink(telemetryPath);
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = await handlers.get("run_policy_doctor")?.({
+      includeProviderConfig: "no"
+    });
+
+    expect(result?.isError).toBe(true);
+    expect(readFileSync(telemetryPath, "utf8")).toBe("");
+  });
+
+  it("does not append JSONL telemetry for unknown run_policy_doctor modelId", async () => {
+    const telemetryPath = tempTelemetryPath();
+    const telemetry = new JsonlTelemetrySink(telemetryPath);
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = await handlers.get("run_policy_doctor")?.({
+      modelId: "not-a-model"
+    });
+
+    expect(result?.isError).toBe(true);
+    expect(readFileSync(telemetryPath, "utf8")).toBe("");
+  });
+
+  it("does not record telemetry for valid run_policy_doctor input", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = await handlers.get("run_policy_doctor")?.({
+      includeTelemetry: false,
+      includeProviderConfig: false
+    });
+
+    expect(result?.isError).toBeFalsy();
+    expect(telemetry.getEvents()).toHaveLength(0);
+  });
+
   it("does not expose provider credentials through inspect_model_policies", async () => {
     const { handlers } = makeRegisteredTools();
 
@@ -212,7 +317,8 @@ describe("MCP tools", () => {
   });
 
   it("returns standardized invalid responses with modelMessage", async () => {
-    const { handlers } = makeRegisteredTools();
+    const telemetry = new InMemoryTelemetrySink();
+    const { handlers } = makeRegisteredTools(telemetry);
     const result = await handlers.get("get_model_policy")?.({ modelId: "not-a-model" });
 
     expect(result?.isError).toBe(true);
@@ -229,6 +335,12 @@ describe("MCP tools", () => {
       "Tool get_model_policy input is invalid."
     );
     expect((body as { issues: unknown[] }).issues).toHaveLength(1);
+    expect(telemetry.getEvents()).toEqual([
+      expect.objectContaining({
+        type: "tool_input_invalid",
+        toolName: "get_model_policy"
+      })
+    ]);
   });
 
   it("queries telemetry with redacted metadata only when requested", async () => {
@@ -1737,4 +1849,10 @@ function confidenceFor(
   modelId: string
 ): string | undefined {
   return suggestions.find((suggestion) => suggestion.modelId === modelId)?.confidence;
+}
+
+function tempTelemetryPath(): string {
+  const dir = mkdtempSync(join(tmpdir(), "oss-harness-tools-"));
+  tempDirs.push(dir);
+  return join(dir, "telemetry.jsonl");
 }

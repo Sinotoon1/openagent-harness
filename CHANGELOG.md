@@ -1,3 +1,26 @@
+## oss-agent-harness-mcp v1.0.0-candidate.14
+
+This candidate release adds a read-only policy doctor / harness health check.
+
+### Added
+
+- New `run_policy_doctor` MCP tool for sanitized policy, provider config, provider override, context, and telemetry suggestion diagnostics.
+- Severity-filterable structured reports with `ok`, `warning`, or `error` status and issue summary counts.
+- Info-level disabled-provider diagnostics when configured base URL environment variables are absent.
+- Telemetry suggestion diagnostics for bounded latest-window caveats, unavailable telemetry, unknown repair names, unapplied suggestions, and suggested repair order mismatches.
+
+### Preserved
+
+- The policy doctor is read-only and does not edit policy YAML, provider config, telemetry, package, or generated files.
+- No policy apply tool was added, and repair policy suggestions remain manual review inputs.
+- No live provider, account, quota, credential, base URL, or API validation is performed.
+- Repair behavior, provider routing, streaming behavior, telemetry sinks, JSONL behavior, security sanitization, session hashing, context compaction, caller-provided schema descriptors, MCP tool names, provider config behavior, and policy loading behavior are unchanged.
+
+### Validation
+
+- `npm test`: 10 test files passed, 133 tests passed.
+- `npm run build`: passed.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.13
 
 This candidate release adds explicit zero-event repair policy suggestion rows.
