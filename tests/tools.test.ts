@@ -4,6 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ChatRouter } from "../src/router/chatRouter.js";
 import { registerTools } from "../src/tools/index.js";
 import { InMemoryTelemetrySink } from "../src/telemetry/memory.js";
+import { createReviewableRepairPolicySuggestions } from "../src/telemetry/repairPolicySuggestions.js";
 import { hashSessionId, hashSessionIdWithSalt } from "../src/security/sessionHash.js";
 
 type ToolHandler = (input: unknown) => Promise<{
@@ -1005,6 +1006,146 @@ describe("MCP tools", () => {
       kind: "repair_order"
     });
     expect(result.note).toBe("No YAML policies were modified.");
+  });
+
+  it("returns an explicit insufficient_data row for requested models with zero repair telemetry", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const result = parseToolResult(
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "deepseek-flash" }))!
+    ) as {
+      suggestions: unknown[];
+      policySuggestions: Array<{
+        modelId: string;
+        kind: string;
+        status: string;
+        confidence: string;
+        window: { type: string; limit: number; eventCount: number };
+        currentRepairs?: string[];
+        suggestedRepairs: string[];
+        warnings: Array<{ code: string; message: string }>;
+        reason: string;
+        yamlPatchPreview: string | null;
+      }>;
+    };
+    const suggestion = result.policySuggestions[0];
+
+    expect(result.suggestions).toEqual([]);
+    expect(result.policySuggestions).toHaveLength(1);
+    expect(suggestion).toMatchObject({
+      modelId: "deepseek-flash",
+      kind: "repair_order",
+      status: "insufficient_data",
+      confidence: "low",
+      window: {
+        type: "latest",
+        limit: 200,
+        eventCount: 0
+      },
+      suggestedRepairs: [],
+      yamlPatchPreview: null
+    });
+    expect(suggestion?.currentRepairs).toEqual([
+      "markdownPathAutolinkUnwrap",
+      "parseJsonArrayString",
+      "bareStringToArray"
+    ]);
+    expect(suggestion?.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "zero_repaired_telemetry_events",
+          message:
+            "No repaired telemetry events were found for this model in the bounded latest window."
+        }),
+        expect.objectContaining({ code: "bounded_latest_window" }),
+        expect.objectContaining({ code: "telemetry_sink_configured" })
+      ])
+    );
+    expect(suggestion?.reason).toContain("no repair-order change is suggested");
+  });
+
+  it("warns instead of crashing when a zero-event model policy is missing", () => {
+    const suggestions = createReviewableRepairPolicySuggestions([], {
+      modelId: "missing-policy-model",
+      limit: 200,
+      currentRepairsForModel: () => undefined
+    });
+
+    expect(suggestions).toMatchObject([
+      {
+        modelId: "missing-policy-model",
+        status: "insufficient_data",
+        confidence: "low",
+        window: {
+          type: "latest",
+          limit: 200,
+          eventCount: 0
+        },
+        suggestedRepairs: [],
+        yamlPatchPreview: null
+      }
+    ]);
+    expect(suggestions[0]?.currentRepairs).toBeUndefined();
+    expect(suggestions[0]?.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "zero_repaired_telemetry_events" }),
+        expect.objectContaining({ code: "current_policy_unavailable" }),
+        expect.objectContaining({ code: "model_policy_not_found" })
+      ])
+    );
+  });
+
+  it("does not emit zero-event policy suggestions for every model when modelId is omitted", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const result = parseToolResult((await handlers.get("suggest_repair_policy")?.({}))!) as {
+      suggestions: unknown[];
+      policySuggestions: unknown[];
+    };
+
+    expect(result.suggestions).toEqual([]);
+    expect(result.policySuggestions).toEqual([]);
+  });
+
+  it("keeps zero-event suggestion output sanitized", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "tool_input_repaired",
+      sessionId: "raw-zero-suggest-session",
+      modelId: "kimi-k2-6",
+      toolName: "repair_tool_input",
+      metadata: {
+        repairs: ["bareStringToArray"],
+        apiKey: "raw-zero-api-key",
+        fileContent: "raw-zero-file-content",
+        command: "deploy --token raw-zero-command-token",
+        headers: {
+          authorization: "Bearer raw-zero-authorization"
+        },
+        env: {
+          API_KEY: "raw-zero-env-key"
+        },
+        stdout: "token=raw-zero-stdout-token",
+        stderr: "password=raw-zero-stderr-password",
+        messages: [{ role: "user", content: "raw zero prompt content" }]
+      }
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const response =
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "deepseek-flash" }))?.content[0]
+        ?.text ?? "";
+
+    expect(response).toContain("insufficient_data");
+    expect(response).not.toContain("raw-zero-suggest-session");
+    expect(response).not.toContain("raw-zero-api-key");
+    expect(response).not.toContain("raw-zero-file-content");
+    expect(response).not.toContain("raw-zero-command-token");
+    expect(response).not.toContain("raw-zero-authorization");
+    expect(response).not.toContain("raw-zero-env-key");
+    expect(response).not.toContain("raw-zero-stdout-token");
+    expect(response).not.toContain("raw-zero-stderr-password");
+    expect(response).not.toContain("raw zero prompt content");
   });
 
   it("builds reviewable repair policy suggestions grouped by model and ordered by frequency", async () => {

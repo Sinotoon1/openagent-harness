@@ -2,7 +2,11 @@ import { repairNames, type RepairName } from "../policies/types.js";
 import type { TelemetryEvent } from "./types.js";
 
 export type RepairPolicySuggestionConfidence = "low" | "medium" | "high";
-export type RepairPolicySuggestionStatus = "suggested" | "already_aligned" | "policy_not_found";
+export type RepairPolicySuggestionStatus =
+  | "suggested"
+  | "already_aligned"
+  | "policy_not_found"
+  | "insufficient_data";
 
 export interface RepairPolicySuggestionWarning {
   code: string;
@@ -23,7 +27,7 @@ export interface ReviewableRepairPolicySuggestion {
   suggestedRepairs: RepairName[];
   repairCounts: Partial<Record<RepairName, number>>;
   reason: string;
-  yamlPatchPreview: string;
+  yamlPatchPreview: string | null;
   warnings: RepairPolicySuggestionWarning[];
 }
 
@@ -48,6 +52,15 @@ export function createReviewableRepairPolicySuggestions(
   const limit = options.limit ?? 200;
   const byModel = groupRepairTelemetryByModel(events);
 
+  if (options.modelId !== undefined && byModel[options.modelId] === undefined) {
+    return [
+      buildZeroEventPolicySuggestion(options.modelId, {
+        limit,
+        currentRepairsForModel: options.currentRepairsForModel
+      })
+    ];
+  }
+
   return Object.entries(byModel)
     .filter(([modelId]) => options.modelId === undefined || modelId === options.modelId)
     .map(([modelId, telemetry]) =>
@@ -56,6 +69,63 @@ export function createReviewableRepairPolicySuggestions(
         currentRepairsForModel: options.currentRepairsForModel
       })
     );
+}
+
+function buildZeroEventPolicySuggestion(
+  modelId: string,
+  options: {
+    limit: number;
+    currentRepairsForModel?: (modelId: string) => string[] | undefined;
+  }
+): ReviewableRepairPolicySuggestion {
+  const currentRepairs = options.currentRepairsForModel?.(modelId);
+  const warnings: RepairPolicySuggestionWarning[] = [
+    {
+      code: "zero_repaired_telemetry_events",
+      message:
+        "No repaired telemetry events were found for this model in the bounded latest window."
+    },
+    {
+      code: "bounded_latest_window",
+      message: "Suggestion is based on the bounded latest telemetry window, not full history."
+    },
+    {
+      code: "telemetry_sink_configured",
+      message: "Telemetry may be in-memory or local JSONL depending on harness configuration."
+    }
+  ];
+
+  if (currentRepairs === undefined) {
+    warnings.push(
+      {
+        code: "current_policy_unavailable",
+        message: "Current repair order is unavailable for this model."
+      },
+      {
+        code: "model_policy_not_found",
+        message: "Current model policy could not be loaded."
+      }
+    );
+  }
+
+  return {
+    modelId,
+    kind: "repair_order",
+    status: "insufficient_data",
+    confidence: "low",
+    window: {
+      type: "latest",
+      limit: options.limit,
+      eventCount: 0
+    },
+    ...(currentRepairs ? { currentRepairs } : {}),
+    suggestedRepairs: [],
+    repairCounts: {},
+    reason:
+      "No repaired telemetry events were available for this model, so no repair-order change is suggested.",
+    yamlPatchPreview: null,
+    warnings
+  };
 }
 
 function groupRepairTelemetryByModel(

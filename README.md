@@ -374,6 +374,16 @@ Warnings call out insufficient telemetry, unknown repair names, missing policies
 already-aligned ordering, the bounded latest-window limitation, and whether
 telemetry may be memory or JSONL depending on configuration.
 
+When `suggest_repair_policy` is called with an explicit `modelId` and that model
+has zero repaired telemetry events in the bounded latest window, the response
+includes one `policySuggestions` row with `status: "insufficient_data"`,
+`confidence: "low"`, `eventCount: 0`, empty `suggestedRepairs`, and
+`yamlPatchPreview: null`. If the policy exists, the row still includes
+`currentRepairs`; if it cannot be loaded, the row includes a missing-policy
+warning instead of failing. Calls without `modelId` remain telemetry-driven and
+do not emit zero-event rows for every known policy. Use an explicit `modelId` to
+check whether a model has enough repair telemetry to review.
+
 ## Usage examples
 
 ### `oss_chat` non-streaming
@@ -499,6 +509,26 @@ Example response excerpt:
       "currentRepairs": ["parseJsonArrayString", "bareStringToArray"],
       "suggestedRepairs": ["bareStringToArray", "parseJsonArrayString"],
       "yamlPatchPreview": "# Suggestion only; review manually before editing YAML.\nrepairs:\n  - bareStringToArray\n  - parseJsonArrayString"
+    }
+  ],
+  "note": "No YAML policies were modified."
+}
+```
+
+Zero-event response excerpt for an explicit model:
+
+```json
+{
+  "policySuggestions": [
+    {
+      "modelId": "deepseek-flash",
+      "kind": "repair_order",
+      "status": "insufficient_data",
+      "confidence": "low",
+      "window": { "type": "latest", "limit": 200, "eventCount": 0 },
+      "currentRepairs": ["markdownPathAutolinkUnwrap", "parseJsonArrayString"],
+      "suggestedRepairs": [],
+      "yamlPatchPreview": null
     }
   ],
   "note": "No YAML policies were modified."
@@ -640,10 +670,17 @@ In `.vscode/mcp.json`:
 
 ## Release hygiene
 
-This candidate is prepared for the `v1.0.0-candidate.12` prerelease line. Before
+This candidate is prepared for the `v1.0.0-candidate.13` prerelease line. Before
 publishing to npm, verify that `package.json`, `package-lock.json`, and the git
 tag use the same candidate version. Do not publish automatically from this
 repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.13 release notes:
+
+- Adds explicit `insufficient_data` policy suggestion rows for requested models with zero repaired telemetry.
+- Includes current repairs for zero-event rows when the model policy exists.
+- Keeps all-model `suggest_repair_policy` calls telemetry-driven, without emitting zero-event rows for every policy.
+- Keeps YAML patch previews null for zero-event rows and preserves the no-auto-apply boundary.
 
 Candidate.12 release notes:
 

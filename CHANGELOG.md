@@ -1,3 +1,25 @@
+## oss-agent-harness-mcp v1.0.0-candidate.13
+
+This candidate release adds explicit zero-event repair policy suggestion rows.
+
+### Changed
+
+- `suggest_repair_policy` now returns an `insufficient_data` `policySuggestions` row when an explicit `modelId` has zero repaired telemetry events.
+- Zero-event rows include current repairs when the model policy can be loaded, empty suggested repairs, low confidence, warnings, and `yamlPatchPreview: null`.
+- Calls without `modelId` remain telemetry-driven and do not emit zero-event rows for every known policy.
+
+### Preserved
+
+- Legacy `suggestions` output is unchanged.
+- Existing non-zero `policySuggestions` behavior is unchanged.
+- Policy suggestions remain review-only; YAML files are not written and no policy apply/write tool is added.
+- Repair behavior, provider routing, streaming behavior, telemetry sinks, JSONL behavior, security sanitization, session hashing, context compaction, provider config validation, policy loading, MCP tool names, and caller-provided schema descriptor behavior are unchanged.
+
+### Validation
+
+- `npm test`: 9 test files passed, 115 tests passed.
+- `npm run build`: passed.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.12
 
 This candidate release improves repair policy suggestions into reviewable policy patch suggestions.
