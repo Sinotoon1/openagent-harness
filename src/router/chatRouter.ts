@@ -25,24 +25,37 @@ export class ChatRouter {
       });
     }
 
-    const negotiation = negotiateCapabilities(input.capabilities, selectedProviders, {
-      sessionId: input.sessionId,
-      modelId: input.modelId,
-      telemetry: this.telemetry
-    });
-
     const attempts: OssChatOutput["attempts"] = [];
 
     for (const [index, provider] of selectedProviders.entries()) {
+      const negotiation = negotiateCapabilities(input.capabilities, provider, {
+        sessionId: input.sessionId,
+        modelId: input.modelId,
+        attemptIndex: index,
+        telemetry: this.telemetry
+      });
       const capabilities = applyProviderModelOverrides(
         input.modelId,
         provider.id,
         negotiation.capabilities,
         {
           sessionId: input.sessionId,
+          attemptIndex: index,
           telemetry: this.telemetry
         }
       );
+
+      this.telemetry.record({
+        type: "capability_negotiated",
+        sessionId: input.sessionId,
+        modelId: input.modelId,
+        providerId: provider.id,
+        metadata: {
+          attemptIndex: index,
+          capabilities,
+          droppedCapabilities: negotiation.droppedCapabilities
+        }
+      });
 
       const likelyWarm = this.cacheWarmth.markAndCheck(
         provider.id,

@@ -1,4 +1,4 @@
-# Provider Matrix and Smoke Tests
+# Provider Matrix and Manual Smoke Tests
 
 This harness ships with two placeholder provider IDs: `providerOne` and
 `providerTwo`. They become real providers only when `src/providers/providers.yaml`
@@ -20,7 +20,7 @@ Model slug defaults are identity mappings for `kimi-k2-6`, `deepseek-v4-pro`, an
 `deepseek-flash`. Override them with the `*_SLUG` environment variables listed in
 `README.md` when a provider uses different model names.
 
-## Smoke-Test Setup
+## Manual Smoke-Test Setup
 
 Use a disposable session ID so session pinning and cache telemetry are easy to
 identify:
@@ -37,7 +37,11 @@ node dist/server.js
 API keys are runtime secrets. They are not required for unit tests and should not
 be committed to config files, test fixtures, snapshots, or logs.
 
-## Smoke Tests
+## Manual Smoke Tests
+
+These are manual live-provider smoke-test procedures. They are not automated
+live-provider integration coverage, and the unit test suite does not require
+real provider credentials or network access.
 
 ### Non-Streaming Chat
 
@@ -119,8 +123,10 @@ Request all capabilities against both providers:
 }
 ```
 
-Expected result: unsupported flags are dropped independently across the selected
-provider set and listed in `droppedCapabilities`.
+Expected result: each provider attempt uses the strongest capability set that
+provider supports. Unsupported flags are dropped independently for that attempt,
+listed in `droppedCapabilities` for the successful attempt, and recorded in
+capability telemetry with the provider ID and attempt index.
 
 ### Model Slug Translation
 

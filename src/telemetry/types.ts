@@ -10,6 +10,7 @@ export const telemetryEventTypes = [
   "tool_input_normalized",
   "tool_input_invalid",
   "capability_dropped",
+  "capability_negotiated",
   "thinking_overridden",
   "cache_likely_warm",
   "cache_likely_cold",

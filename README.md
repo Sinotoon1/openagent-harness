@@ -7,6 +7,59 @@ The tool logic is transport-neutral: `src/server.ts` only wires stdio, while too
 routing, repair, context compaction, telemetry, policies, and providers live in
 separate modules so Streamable HTTP can be added later without changing tool logic.
 
+## Responsibility Boundary
+
+This MCP server is a model/provider-aware harness, not an IDE, coding agent,
+provider gateway, observability product, billing system, workspace indexer, or
+secret manager. Callers own context selection, workspace state, tool execution,
+search, diagnostics, git state, and user-visible task state. The harness owns
+only model-aware repair, routing/capability negotiation, session pinning,
+context-budget safety checks, safe local telemetry, and streaming/fallback
+guards.
+
+IDE and coding-agent callers are responsible for deciding which files, messages,
+diagnostics, shell output, git diffs, search results, and tool results belong in
+the request. `compact_context` is only a model-aware context budget guard; it is
+not a workspace memory system or relevance engine. `query_telemetry` and
+`get_harness_stats` are local harness health tools, not billing, SLA, usage
+analytics, or managed observability features. `record_eval_event` stores local
+harness notes in telemetry only; broad eval pipeline management, experiment
+tracking, dashboards, and research workflows remain out of scope.
+
+Provider configuration validation is static config validation. It checks local
+provider IDs, environment variable names, sticky-session settings, and slug
+mappings; it does not validate live credentials, provider accounts, quota, cost,
+or availability. Streaming support is provider-adapter safety and fallback
+handling, not full agent event orchestration. `repair_tool_input` is a bounded
+repair utility for known schema compatibility problems, not a general external
+tool registry.
+
+## What Not To Build
+
+- workspace index/search
+- diagnostics ingestion
+- git diff tools
+- shell/file execution
+- provider account discovery
+- live credential validation
+- quota/cost tracking
+- SLA dashboards
+- usage analytics
+- eval experiment management
+- deployment/publish automation
+- high-level agent tool-call orchestration
+
+## Safe Future Work
+
+- model policy validation
+- caller-provided repair schema descriptors
+- stricter compaction budget guarantees
+- safer JSONL bounds
+- provider capability metadata
+- OpenAI-compatible streaming edge-case tests
+- manual provider smoke-test docs
+- narrower harness-specific telemetry event names
+
 ## Status
 
 All major P0 architecture from the audit is implemented:
@@ -20,7 +73,7 @@ All major P0 architecture from the audit is implemented:
 - `sessionIdHash` telemetry instead of raw top-level `sessionId`
 - canonical model ID boundary
 - provider session pinning
-- capability negotiation
+- per-attempt capability negotiation
 - DeepSeek thinking override
 - effective-context compaction
 - telemetry query/report tools
@@ -30,12 +83,12 @@ All major P0 architecture from the audit is implemented:
 ## Tools
 
 - `oss_chat`: routes chat through canonical model IDs, provider priority, retryable fallback, capability negotiation, session pinning, and provider/model overrides.
-- `repair_tool_input`: validates first, repairs only after validation fails, then validates again.
+- `repair_tool_input`: validates first, repairs only after validation fails, then validates again; it is not a general external tool registry.
 - `compact_context`: compacts against effective context tokens, never advertised context.
 - `get_model_policy`: returns YAML-backed policy for one or all canonical models.
-- `record_eval_event`: records evaluation telemetry.
-- `query_telemetry`: queries configured telemetry with bounded, redacted metadata.
-- `get_harness_stats`: summarizes recent sanitized telemetry.
+- `record_eval_event`: records local harness notes/telemetry only, not full eval-platform or experiment-tracker state.
+- `query_telemetry`: queries configured local harness telemetry with bounded, redacted metadata.
+- `get_harness_stats`: summarizes recent sanitized harness health telemetry, not billing or SLA observability.
 - `suggest_repair_policy`: suggests repair policy order from repair telemetry without editing YAML.
 
 Canonical model IDs used internally:
@@ -73,7 +126,9 @@ Provider metadata is configured in `src/providers/providers.yaml` and copied to
 base URL environment variable names, auth environment variable names, sticky
 session strategies, duplicate provider IDs, and model slug mappings. API key
 values are read from the named environment variables at runtime and are not
-required for tests.
+required for tests. This validation is static config validation only; it does not
+contact providers, validate live credentials, discover accounts, check quotas, or
+verify cost/billing state.
 
 ```yaml
 providers:
@@ -151,6 +206,10 @@ Repairs are issue-path precise. The repair engine iterates over Zod issue paths
 and only edits fields reported by validation. For example, markdown path
 auto-link unwrapping can run for configured `pathString` fields and path arrays,
 but it will not touch `writeFile.content` or any other non-issue field.
+Built-in repair schemas are intentionally small compatibility helpers for this
+harness. External IDE/tool schema ownership remains with the caller. Future
+schema support should prefer caller-supplied schema descriptors rather than
+expanding hard-coded schemas indefinitely.
 
 Telemetry uses the memory sink by default and resets on process restart. An
 optional JSONL sink can persist sanitized events to a local file:
@@ -194,7 +253,9 @@ tool input invalid/repair/normalization counts, repair breakdowns, provider
 fallbacks, streaming classifications, cache warmth hints, and context compaction
 counts without returning raw metadata, raw sessions, messages, headers, commands,
 file contents, or secrets. These stats summarize only the latest bounded window
-rather than full telemetry history.
+rather than full telemetry history. These telemetry tools are local harness
+health aids, not usage analytics, billing, quota, SLA, or managed observability
+systems.
 
 The OpenAI-compatible provider adapter supports OpenAI-style SSE streaming when
 `streaming.enabled=true`, while preserving the existing non-streaming
@@ -209,11 +270,18 @@ incremental MCP streaming transport to clients. Tool-call deltas are collected
 as raw provider deltas in `raw.toolCallDeltas`; they are not reconstructed into
 high-level tool calls yet. OpenAI-style single-line `data:` JSON chunks are
 supported; SSE spec-style multi-line `data:` JSON events are not yet supported.
+Streaming support is limited to provider-adapter parsing, safety classification,
+and fallback guards; high-level agent event orchestration remains the caller's
+responsibility.
 
-Capability negotiation is fallback-wide and conservative across the selected
-provider set. A fallback provider that lacks a requested capability may cause the
-primary attempt to drop that capability too. Per-attempt capability negotiation
-is a future improvement.
+Capability negotiation is per-attempt. Each provider attempt gets the strongest
+requested capability set that provider supports. If fallback moves to another
+provider, that next attempt is negotiated again and may use a reduced capability
+set, such as dropping `zeroDataRetention` while keeping
+`disallowPromptTraining`. Telemetry records unsupported drops per provider
+attempt with the canonical `modelId`, `providerId`, dropped capability, reason,
+and attempt index; `capability_negotiated` records the actual capability set used
+for each attempt.
 
 Context compaction uses model effective-context policy and heuristic summaries.
 It does not yet guarantee that the post-compaction context fits a target token
@@ -332,6 +400,10 @@ window only.
 
 ### `record_eval_event`
 
+`record_eval_event` is for local harness notes and telemetry only. It is not a
+full eval platform, experiment tracker, dashboard, or research pipeline manager.
+Broad eval and research workflow management is out of scope for this harness.
+
 ```json
 {
   "sessionId": "eval-session-1",
@@ -438,10 +510,27 @@ In `.vscode/mcp.json`:
 
 ## Release hygiene
 
-This candidate is prepared for the `v1.0.0-candidate.4` prerelease line. Before
+This candidate is prepared for the `v1.0.0-candidate.7` prerelease line. Before
 publishing to npm, verify that `package.json`, `package-lock.json`, and the git
 tag use the same candidate version. Do not publish automatically from this
 repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.7 release notes:
+
+- Folds candidate.5 per-attempt capability negotiation and candidate.6 responsibility-boundary hardening into one release candidate.
+- Capability negotiation is now per-provider-attempt.
+- Primary providers keep capabilities that only fallback providers lack.
+- Fallback attempts recompute requested capabilities independently.
+- Keeps unsupported capability drops independent for `zeroDataRetention`, `disallowPromptTraining`, and `thinking`.
+- Preserves the DeepSeek v4 Pro `providerTwo` thinking override without affecting other providers or models.
+- Adds provider-aware `capability_dropped` telemetry with reason and attempt index metadata.
+- Adds `capability_negotiated` telemetry for the actual capability set used per attempt.
+- Documents that this is a model/provider-aware harness, not an IDE, coding agent, provider gateway, observability product, billing system, workspace indexer, secret manager, or eval platform.
+- Clarifies that IDEs and coding agents own context selection.
+- Clarifies that `compact_context` is only a model-aware context budget guard.
+- Clarifies that telemetry and stats are local harness health tools, not billing or SLA observability.
+- Clarifies that `repair_tool_input` is a repair utility, not a general external tool registry.
+- Clarifies that provider matrix docs are manual smoke-test guidance, not automated live-provider coverage.
 
 Candidate.4 release notes:
 

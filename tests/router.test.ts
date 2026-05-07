@@ -87,13 +87,85 @@ describe("ChatRouter", () => {
     expect(telemetry.events.some((event) => event.type === "provider_fallback")).toBe(true);
   });
 
-  it("drops unsupported capabilities independently across the selected provider set", () => {
+  it("keeps primary provider capabilities when fallback providers lack them", async () => {
     const telemetry = new InMemoryTelemetrySink();
     const providerOne = new FakeProvider("providerOne", allCapabilities);
     const providerTwo = new FakeProvider("providerTwo", {
-      zeroDataRetention: true,
-      disallowPromptTraining: false,
+      zeroDataRetention: false,
+      disallowPromptTraining: true,
       thinking: true
+    });
+    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+
+    const result = await router.route({
+      modelId: "kimi-k2-6",
+      sessionId: "s1",
+      messages: [{ role: "user", content: "hello" }],
+      providerPriority: ["providerOne", "providerTwo"],
+      capabilities: {
+        zeroDataRetention: true,
+        disallowPromptTraining: true
+      }
+    });
+
+    expect(result.providerId).toBe("providerOne");
+    expect(result.capabilities).toEqual({
+      zeroDataRetention: true,
+      disallowPromptTraining: true
+    });
+    expect(result.droppedCapabilities).toEqual([]);
+    expect(providerOne.calls[0]?.capabilities).toEqual({
+      zeroDataRetention: true,
+      disallowPromptTraining: true
+    });
+    expect(providerTwo.calls).toHaveLength(0);
+  });
+
+  it("renegotiates capabilities on fallback and drops only unsupported flags", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const providerOne = new FakeProvider(
+      "providerOne",
+      allCapabilities,
+      "retryableFailure"
+    );
+    const providerTwo = new FakeProvider("providerTwo", {
+      zeroDataRetention: false,
+      disallowPromptTraining: true,
+      thinking: true
+    });
+    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+
+    const result = await router.route({
+      modelId: "kimi-k2-6",
+      sessionId: "s1",
+      messages: [{ role: "user", content: "hello" }],
+      providerPriority: ["providerOne", "providerTwo"],
+      capabilities: {
+        zeroDataRetention: true,
+        disallowPromptTraining: true
+      }
+    });
+
+    expect(result.providerId).toBe("providerTwo");
+    expect(providerOne.calls[0]?.capabilities).toEqual({
+      zeroDataRetention: true,
+      disallowPromptTraining: true
+    });
+    expect(providerTwo.calls[0]?.capabilities).toEqual({
+      disallowPromptTraining: true
+    });
+    expect(result.capabilities).toEqual({
+      disallowPromptTraining: true
+    });
+    expect(result.droppedCapabilities).toEqual(["zeroDataRetention"]);
+  });
+
+  it("drops multiple unsupported capabilities independently for one provider attempt", () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const providerTwo = new FakeProvider("providerTwo", {
+      zeroDataRetention: false,
+      disallowPromptTraining: true,
+      thinking: false
     });
 
     const result = negotiateCapabilities(
@@ -102,43 +174,72 @@ describe("ChatRouter", () => {
         disallowPromptTraining: true,
         thinking: true
       },
-      [providerOne, providerTwo],
+      providerTwo,
       {
         telemetry,
         sessionId: "s1",
-        modelId: "deepseek-flash"
+        modelId: "deepseek-flash",
+        attemptIndex: 1
       }
     );
 
     expect(result.capabilities).toEqual({
-      zeroDataRetention: true,
-      thinking: true
+      disallowPromptTraining: true
     });
-    expect(result.droppedCapabilities).toEqual(["disallowPromptTraining"]);
+    expect(result.droppedCapabilities).toEqual(["zeroDataRetention", "thinking"]);
     expect(telemetry.events).toMatchObject([
       {
         type: "capability_dropped",
-        capability: "disallowPromptTraining"
+        providerId: "providerTwo",
+        capability: "zeroDataRetention",
+        metadata: {
+          reason: "unsupported_by_provider",
+          attemptIndex: 1
+        }
+      },
+      {
+        type: "capability_dropped",
+        providerId: "providerTwo",
+        capability: "thinking"
       }
     ]);
   });
 
-  it("overrides thinking off for deepseek-v4-pro on providerTwo", async () => {
+  it("overrides thinking only for deepseek-v4-pro on providerTwo", async () => {
     const telemetry = new InMemoryTelemetrySink();
+    const providerOne = new FakeProvider("providerOne", allCapabilities);
     const providerTwo = new FakeProvider("providerTwo", allCapabilities);
-    const router = new ChatRouter([providerTwo], telemetry);
+    const router = new ChatRouter([providerOne, providerTwo], telemetry);
 
-    const result = await router.route({
+    const providerTwoDeepSeek = await router.route({
       modelId: "deepseek-v4-pro",
       sessionId: "s1",
       messages: [{ role: "user", content: "hello" }],
       providerPriority: ["providerTwo"],
       capabilities: { thinking: true }
     });
+    const providerOneDeepSeek = await router.route({
+      modelId: "deepseek-v4-pro",
+      sessionId: "s2",
+      messages: [{ role: "user", content: "hello" }],
+      providerPriority: ["providerOne"],
+      capabilities: { thinking: true }
+    });
+    const providerTwoKimi = await router.route({
+      modelId: "kimi-k2-6",
+      sessionId: "s3",
+      messages: [{ role: "user", content: "hello" }],
+      providerPriority: ["providerTwo"],
+      capabilities: { thinking: true }
+    });
 
-    expect(result.capabilities.thinking).toBeUndefined();
+    expect(providerTwoDeepSeek.capabilities.thinking).toBeUndefined();
     expect(providerTwo.calls[0]?.capabilities.thinking).toBeUndefined();
-    expect(telemetry.events.some((event) => event.type === "thinking_overridden")).toBe(true);
+    expect(providerOneDeepSeek.capabilities.thinking).toBe(true);
+    expect(providerOne.calls[0]?.capabilities.thinking).toBe(true);
+    expect(providerTwoKimi.capabilities.thinking).toBe(true);
+    expect(providerTwo.calls[1]?.capabilities.thinking).toBe(true);
+    expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toHaveLength(1);
   });
 
   it("emits likely cold then warm cache telemetry for repeated session/model/provider", async () => {

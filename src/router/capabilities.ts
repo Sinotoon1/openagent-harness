@@ -15,10 +15,11 @@ export interface CapabilityNegotiationResult {
 
 export function negotiateCapabilities(
   requested: CapabilityFlags | undefined,
-  providers: ProviderAdapter[],
+  provider: ProviderAdapter,
   metadata: {
     sessionId?: string;
     modelId?: CanonicalModelId;
+    attemptIndex?: number;
     telemetry?: TelemetrySink;
   } = {}
 ): CapabilityNegotiationResult {
@@ -30,11 +31,7 @@ export function negotiateCapabilities(
       continue;
     }
 
-    const supportedBySelectedProviders = providers.every(
-      (provider) => provider.capabilities[capability]
-    );
-
-    if (supportedBySelectedProviders) {
+    if (provider.capabilities[capability]) {
       capabilities[capability] = true;
       continue;
     }
@@ -44,9 +41,11 @@ export function negotiateCapabilities(
       type: "capability_dropped",
       sessionId: metadata.sessionId,
       modelId: metadata.modelId,
+      providerId: provider.id,
       capability,
       metadata: {
-        selectedProviders: providers.map((provider) => provider.id)
+        reason: "unsupported_by_provider",
+        ...(metadata.attemptIndex !== undefined ? { attemptIndex: metadata.attemptIndex } : {})
       }
     });
   }
@@ -60,6 +59,7 @@ export function applyProviderModelOverrides(
   capabilities: CapabilityFlags,
   metadata: {
     sessionId?: string;
+    attemptIndex?: number;
     telemetry?: TelemetrySink;
   } = {}
 ): CapabilityFlags {
@@ -73,7 +73,8 @@ export function applyProviderModelOverrides(
       providerId,
       capability: "thinking",
       metadata: {
-        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled"
+        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled",
+        ...(metadata.attemptIndex !== undefined ? { attemptIndex: metadata.attemptIndex } : {})
       }
     });
     return next;

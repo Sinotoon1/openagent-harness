@@ -4,6 +4,10 @@
 
 This repository implements a TypeScript MCP harness for OSS coding models such as Kimi and DeepSeek.
 
+## Scope guard
+
+Before adding a feature, identify the rightful owner. Do not add IDE/editor context selection, shell/file/git execution, workspace indexing, provider account management, billing/SLA analytics, dashboard UI, deployment automation, or broad eval-pipeline features to this harness. Prefer narrow model/provider-aware utilities with bounded sanitized telemetry and explicit non-production caveats.
+
 ## Review expectations
 
 When asked for project feedback:

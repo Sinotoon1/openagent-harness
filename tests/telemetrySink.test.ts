@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ChatRouter } from "../src/router/chatRouter.js";
+import type {
+  ProviderAdapter,
+  ProviderChatRequest,
+  ProviderChatResponse
+} from "../src/providers/types.js";
+import { ChatRouter } from "../src/router/chatRouter.js";
 import { hashSessionId } from "../src/security/sessionHash.js";
 import { createTelemetrySinkFromEnv } from "../src/telemetry/config.js";
 import { JsonlTelemetrySink } from "../src/telemetry/jsonl.js";
@@ -12,6 +17,7 @@ import { queryTelemetry } from "../src/telemetry/query.js";
 import { createRepairTelemetryReport } from "../src/telemetry/repairReport.js";
 import { getHarnessStats } from "../src/telemetry/stats.js";
 import { registerTools } from "../src/tools/index.js";
+import type { CapabilityFlags, CanonicalModelId, ProviderId } from "../src/types.js";
 
 type ToolHandler = (input: unknown) => Promise<{
   content: Array<{ type: "text"; text: string }>;
@@ -117,6 +123,60 @@ describe("telemetry sinks", () => {
     expect(stats.totals.events).toBe(1);
     expect(stats.repairs.byRepair.bareStringToArray).toBe(1);
     expect(report.models["deepseek-v4-pro"]?.repairCounts.bareStringToArray).toBe(1);
+  });
+
+  it("records per-attempt capability negotiation through the JSONL sink", async () => {
+    const filePath = tempTelemetryPath();
+    const sink = new JsonlTelemetrySink(filePath);
+    const providerOne = new JsonlFakeProvider("providerOne", {
+      zeroDataRetention: false,
+      disallowPromptTraining: true,
+      thinking: true
+    });
+    const router = new ChatRouter([providerOne], sink);
+
+    const result = await router.route({
+      modelId: "kimi-k2-6",
+      sessionId: "jsonl-capability-session",
+      messages: [{ role: "user", content: "hello" }],
+      providerPriority: ["providerOne"],
+      capabilities: {
+        zeroDataRetention: true,
+        disallowPromptTraining: true
+      }
+    });
+    const negotiated = queryTelemetry(sink, {
+      type: "capability_negotiated",
+      providerId: "providerOne",
+      includeMetadata: true,
+      limit: 10
+    });
+    const dropped = queryTelemetry(sink, {
+      type: "capability_dropped",
+      providerId: "providerOne",
+      includeMetadata: true,
+      limit: 10
+    });
+
+    expect(result.capabilities).toEqual({
+      disallowPromptTraining: true
+    });
+    expect(negotiated.total).toBe(1);
+    expect(negotiated.events[0]?.metadata).toMatchObject({
+      attemptIndex: 0,
+      capabilities: {
+        disallowPromptTraining: true
+      },
+      droppedCapabilities: ["zeroDataRetention"]
+    });
+    expect(dropped.events[0]).toMatchObject({
+      capability: "zeroDataRetention",
+      providerId: "providerOne",
+      metadata: {
+        reason: "unsupported_by_provider",
+        attemptIndex: 0
+      }
+    });
   });
 
   it("serves query, stats, and repair suggestion MCP tools from JSONL telemetry", async () => {
@@ -264,6 +324,21 @@ function tempTelemetryPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "oss-harness-telemetry-"));
   tempDirs.push(dir);
   return join(dir, "telemetry.jsonl");
+}
+
+class JsonlFakeProvider implements ProviderAdapter {
+  readonly supportedModels: CanonicalModelId[] = ["kimi-k2-6"];
+  readonly calls: ProviderChatRequest[] = [];
+
+  constructor(
+    readonly id: ProviderId,
+    readonly capabilities: Required<CapabilityFlags>
+  ) {}
+
+  async completeChat(request: ProviderChatRequest): Promise<ProviderChatResponse> {
+    this.calls.push(request);
+    return { content: `ok from ${this.id}` };
+  }
 }
 
 function registerTelemetryTools(telemetry: JsonlTelemetrySink): Map<string, ToolHandler> {
