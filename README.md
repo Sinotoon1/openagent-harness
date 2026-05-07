@@ -35,6 +35,7 @@ All major P0 architecture from the audit is implemented:
 - `get_model_policy`: returns YAML-backed policy for one or all canonical models.
 - `record_eval_event`: records evaluation telemetry.
 - `query_telemetry`: queries in-memory telemetry with bounded, redacted metadata.
+- `get_harness_stats`: summarizes recent sanitized in-memory telemetry.
 - `suggest_repair_policy`: suggests repair policy order from repair telemetry without editing YAML.
 
 Canonical model IDs used internally:
@@ -142,6 +143,15 @@ Metadata uses a denylist for risky payload fields. Keys such as `messages`,
 never returns raw metadata; even with `includeMetadata=true`, metadata is the
 bounded and sanitized form.
 
+`get_harness_stats` returns aggregate counts over the bounded latest telemetry
+window using the same telemetry query path as `query_telemetry`, so `sessionId`
+filters are hashed before matching and metadata remains sanitized. It reports
+tool input invalid/repair/normalization counts, repair breakdowns, provider
+fallbacks, streaming classifications, cache warmth hints, and context compaction
+counts without returning raw metadata, raw sessions, messages, headers, commands,
+file contents, or secrets. These stats are in-memory only, reset on process
+restart, and summarize only the latest bounded window rather than durable history.
+
 The OpenAI-compatible provider adapter supports OpenAI-style SSE streaming when
 `streaming.enabled=true`, while preserving the existing non-streaming
 `stream=false` path. Retryable provider failures may fallback only in the
@@ -245,6 +255,18 @@ collected output after the provider stream completes.
   "limit": 20
 }
 ```
+
+### `get_harness_stats`
+
+```json
+{
+  "modelId": "deepseek-v4-pro",
+  "sessionId": "dev-session-1",
+  "limit": 100
+}
+```
+
+The result is based on in-memory telemetry and the latest bounded window only.
 
 ### `suggest_repair_policy`
 

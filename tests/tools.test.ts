@@ -31,6 +31,12 @@ function parseToolResult(result: Awaited<ReturnType<ToolHandler>>): unknown {
 }
 
 describe("MCP tools", () => {
+  it("registers get_harness_stats", () => {
+    const { handlers } = makeRegisteredTools();
+
+    expect(handlers.has("get_harness_stats")).toBe(true);
+  });
+
   it("returns standardized invalid responses with modelMessage", async () => {
     const { handlers } = makeRegisteredTools();
     const result = await handlers.get("get_model_policy")?.({ modelId: "not-a-model" });
@@ -345,5 +351,245 @@ describe("MCP tools", () => {
     expect(result.suggestions[0]?.suggestedRepairOrder[0]).toBe("bareStringToArray");
     expect(result.suggestions[0]?.currentPolicyOrder).toContain("parseJsonArrayString");
     expect(result.note).toBe("No YAML policies were modified.");
+  });
+
+  it("returns zero-count harness stats for empty telemetry", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const result = parseToolResult((await handlers.get("get_harness_stats")?.({}))!) as {
+      window: { type: string; limit: number };
+      totals: { events: number; models: number; providers: number };
+      toolInputs: {
+        invalid: number;
+        repaired: number;
+        normalized: number;
+        repairSuccessRate: number;
+      };
+      repairs: { byModel: Record<string, number>; byRepair: Record<string, number> };
+      routing: { fallbacks: number };
+      streaming: { success: number };
+      cache: { likelyWarm: number; likelyCold: number; warmRate: number };
+      context: { compactions: number };
+      caveats: string[];
+    };
+
+    expect(result.window).toEqual({ type: "latest", limit: 200 });
+    expect(result.totals).toEqual({ events: 0, models: 0, providers: 0 });
+    expect(result.toolInputs).toEqual({
+      invalid: 0,
+      repaired: 0,
+      normalized: 0,
+      repairSuccessRate: 0
+    });
+    expect(result.repairs.byModel).toEqual({});
+    expect(result.repairs.byRepair).toEqual({});
+    expect(result.routing.fallbacks).toBe(0);
+    expect(result.streaming.success).toBe(0);
+    expect(result.cache).toEqual({ likelyWarm: 0, likelyCold: 0, warmRate: 0 });
+    expect(result.context.compactions).toBe(0);
+    expect(result.caveats).toContain("telemetry is in-memory only");
+    expect(result.caveats).toContain("stats are based on the bounded latest telemetry window");
+  });
+
+  it("computes harness stats from sanitized telemetry events", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "tool_input_invalid",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      toolName: "repair_tool_input"
+    });
+    telemetry.record({
+      type: "tool_input_repaired",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      toolName: "repair_tool_input",
+      metadata: {
+        repairs: ["bareStringToArray", "parseJsonArrayString"]
+      }
+    });
+    telemetry.record({
+      type: "tool_input_normalized",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      toolName: "repair_tool_input"
+    });
+    telemetry.record({
+      type: "provider_fallback",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      providerId: "providerOne",
+      metadata: {
+        fromProvider: "providerOne",
+        toProvider: "providerTwo",
+        fallbackPhase: "before_first_token"
+      }
+    });
+    telemetry.record({
+      type: "cache_likely_cold",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      providerId: "providerOne"
+    });
+    telemetry.record({
+      type: "cache_likely_warm",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      providerId: "providerOne"
+    });
+    telemetry.record({
+      type: "context_compacted",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      metadata: {
+        strategy: "aggressive_drop"
+      }
+    });
+    telemetry.record({
+      type: "eval_event_recorded",
+      sessionId: "stats-session",
+      modelId: "deepseek-v4-pro",
+      metadata: {
+        streamingStatus: "success"
+      }
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult((await handlers.get("get_harness_stats")?.({}))!) as {
+      totals: { events: number; models: number; providers: number };
+      toolInputs: {
+        invalid: number;
+        repaired: number;
+        normalized: number;
+        repairSuccessRate: number;
+      };
+      repairs: {
+        byModel: Record<string, number>;
+        byRepair: Record<string, number>;
+        byTool: Record<string, number>;
+      };
+      routing: {
+        fallbacks: number;
+        byProvider: Record<string, number>;
+        byPhase: Record<string, number>;
+      };
+      streaming: {
+        success: number;
+        failuresBeforeFirstToken: number;
+      };
+      cache: { likelyWarm: number; likelyCold: number; warmRate: number };
+      context: { compactions: number; byMode: Record<string, number> };
+    };
+
+    expect(result.totals).toEqual({ events: 8, models: 1, providers: 1 });
+    expect(result.toolInputs).toEqual({
+      invalid: 1,
+      repaired: 1,
+      normalized: 1,
+      repairSuccessRate: 1
+    });
+    expect(result.repairs.byModel["deepseek-v4-pro"]).toBe(1);
+    expect(result.repairs.byRepair.bareStringToArray).toBe(1);
+    expect(result.repairs.byRepair.parseJsonArrayString).toBe(1);
+    expect(result.repairs.byTool.repair_tool_input).toBe(1);
+    expect(result.routing.fallbacks).toBe(1);
+    expect(result.routing.byProvider.providerOne).toBe(1);
+    expect(result.routing.byPhase.beforeFirstToken).toBe(1);
+    expect(result.streaming.success).toBe(1);
+    expect(result.streaming.failuresBeforeFirstToken).toBe(1);
+    expect(result.cache).toEqual({ likelyWarm: 1, likelyCold: 1, warmRate: 0.5 });
+    expect(result.context.compactions).toBe(1);
+    expect(result.context.byMode.aggressive_drop).toBe(1);
+  });
+
+  it("filters harness stats by modelId", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "tool_input_invalid",
+      modelId: "kimi-k2-6",
+      toolName: "repair_tool_input"
+    });
+    telemetry.record({
+      type: "tool_input_invalid",
+      modelId: "deepseek-flash",
+      toolName: "repair_tool_input"
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult(
+      (await handlers.get("get_harness_stats")?.({ modelId: "kimi-k2-6" }))!
+    ) as { totals: { events: number; models: number }; toolInputs: { invalid: number } };
+
+    expect(result.totals).toEqual({ events: 1, models: 1, providers: 0 });
+    expect(result.toolInputs.invalid).toBe(1);
+  });
+
+  it("filters harness stats by raw sessionId without returning the raw session", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const rawSessionId = "stats-secret-session";
+    telemetry.record({
+      type: "tool_input_invalid",
+      sessionId: rawSessionId,
+      modelId: "kimi-k2-6",
+      toolName: "repair_tool_input"
+    });
+    telemetry.record({
+      type: "tool_input_invalid",
+      sessionId: "other-session",
+      modelId: "kimi-k2-6",
+      toolName: "repair_tool_input"
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const response =
+      (await handlers.get("get_harness_stats")?.({ sessionId: rawSessionId }))?.content[0]?.text ??
+      "";
+    const result = JSON.parse(response) as {
+      totals: { events: number };
+      toolInputs: { invalid: number };
+    };
+
+    expect(result.totals.events).toBe(1);
+    expect(result.toolInputs.invalid).toBe(1);
+    expect(response).not.toContain(rawSessionId);
+    expect(response).not.toContain(hashSessionId(rawSessionId));
+    expect(response).not.toContain("other-session");
+  });
+
+  it("does not expose secrets or risky metadata in harness stats output", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "tool_input_repaired",
+      sessionId: "stats-secret-session",
+      modelId: "deepseek-v4-pro",
+      toolName: "raw-token-tool",
+      metadata: {
+        repairs: ["bareStringToArray", "token=raw-repair-token"],
+        apiKey: "raw-api-key-value",
+        command: "deploy --token raw-command-token",
+        headers: {
+          authorization: "Bearer raw-authorization-value"
+        },
+        messages: [{ role: "user", content: "raw prompt content" }]
+      }
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const response =
+      (await handlers.get("get_harness_stats")?.({ sessionId: "stats-secret-session" }))?.content[0]
+        ?.text ?? "";
+    const result = JSON.parse(response) as {
+      repairs: { byRepair: Record<string, number>; byTool: Record<string, number> };
+    };
+
+    expect(result.repairs.byRepair.bareStringToArray).toBe(1);
+    expect(result.repairs.byRepair["<other>"]).toBe(1);
+    expect(result.repairs.byTool["<other>"]).toBe(1);
+    expect(response).not.toContain("raw-repair-token");
+    expect(response).not.toContain("raw-api-key-value");
+    expect(response).not.toContain("raw-command-token");
+    expect(response).not.toContain("raw-authorization-value");
+    expect(response).not.toContain("raw prompt content");
+    expect(response).not.toContain("stats-secret-session");
   });
 });

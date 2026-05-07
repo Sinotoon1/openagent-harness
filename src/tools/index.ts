@@ -7,6 +7,7 @@ import type { RepairToolInputResult } from "../repair/engine.js";
 import { sanitizeForResponse } from "../security/sanitize.js";
 import { queryTelemetry } from "../telemetry/query.js";
 import { createRepairTelemetryReport } from "../telemetry/repairReport.js";
+import { getHarnessStats } from "../telemetry/stats.js";
 import type { TelemetrySink } from "../telemetry/types.js";
 import {
   makeInvalidToolResponse,
@@ -16,6 +17,7 @@ import { normalizeToolInput } from "./normalizeToolInput.js";
 import type { NormalizeToolInputResult } from "./normalizeToolInput.js";
 import {
   compactContextInputSchema,
+  getHarnessStatsInputSchema,
   getModelPolicyInputSchema,
   ossChatInputSchema,
   queryTelemetryInputSchema,
@@ -211,6 +213,28 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
+    "get_harness_stats",
+    {
+      title: "Get Harness Stats",
+      description: "Summarize recent sanitized in-memory harness telemetry.",
+      inputSchema: getHarnessStatsInputSchema.shape
+    },
+    async (input) => {
+      const parsed = getHarnessStatsInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "get_harness_stats",
+          parsed.error.issues,
+          expectedShapes.get_harness_stats
+        );
+      }
+
+      return asPreSanitizedJsonText(getHarnessStats(deps.telemetry, parsed.data));
+    }
+  );
+
+  server.registerTool(
     "suggest_repair_policy",
     {
       title: "Suggest Repair Policy",
@@ -269,6 +293,17 @@ function asJsonText(data: unknown, isError = false) {
   };
 }
 
+function asPreSanitizedJsonText(data: unknown) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(data, null, 2)
+      }
+    ]
+  };
+}
+
 function toRepairToolResponse(
   repairResult: RepairToolInputResult,
   normalizationResult?: NormalizeToolInputResult
@@ -317,6 +352,8 @@ const expectedShapes = {
     "{ eventName: string; sessionId?: string; modelId?: canonicalModelId; outcome?: pass | fail | skip | error; score?: number; metadata?: object }",
   query_telemetry:
     "{ type?: telemetryEventType; modelId?: canonicalModelId; providerId?: ProviderId; toolName?: string; sessionId?: string; limit?: 1..200; includeMetadata?: boolean }",
+  get_harness_stats:
+    "{ modelId?: canonicalModelId; sessionId?: string; eventType?: string; limit?: 1..200; includeProviders?: boolean }",
   suggest_repair_policy: "{ modelId?: canonicalModelId }"
 } as const;
 

@@ -57,6 +57,16 @@ export const queryTelemetryInputSchema = z
   })
   .strict();
 
+export const getHarnessStatsInputSchema = z
+  .object({
+    modelId: z.enum(canonicalModelIds).optional(),
+    sessionId: z.string().min(1).optional(),
+    eventType: z.string().min(1).optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+    includeProviders: z.boolean().optional()
+  })
+  .strict();
+
 export const suggestRepairPolicyInputSchema = z
   .object({
     modelId: z.enum(canonicalModelIds).optional()
