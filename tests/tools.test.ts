@@ -51,6 +51,16 @@ function callerPathBatchDescriptor(toolName = "callerPathBatch") {
   };
 }
 
+function descriptorWithField(field: string) {
+  return {
+    toolName: "dangerousDescriptor",
+    schema: {
+      type: "object",
+      properties: Object.fromEntries([[field, { type: "string" }]])
+    }
+  };
+}
+
 describe("MCP tools", () => {
   it("registers get_harness_stats", () => {
     const { handlers } = makeRegisteredTools();
@@ -338,6 +348,159 @@ describe("MCP tools", () => {
     expect(body.error.modelMessage).toBe(body.modelMessage);
   });
 
+  it("rejects __proto__ fields in caller descriptors", async () => {
+    const { handlers } = makeRegisteredTools();
+    const result = await handlers.get("repair_tool_input")?.({
+      modelId: "deepseek-v4-pro",
+      schemaDescriptor: descriptorWithField("__proto__"),
+      input: {}
+    });
+
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      modelMessage: string;
+      issues: Array<{ message: string }>;
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.modelMessage).toContain("Tool repair_tool_input input is invalid.");
+    expect(body.issues.some((issue) => issue.message.includes("__proto__"))).toBe(true);
+  });
+
+  it("rejects prototype fields in caller descriptors", async () => {
+    const { handlers } = makeRegisteredTools();
+    const result = await handlers.get("repair_tool_input")?.({
+      modelId: "deepseek-v4-pro",
+      schemaDescriptor: descriptorWithField("prototype"),
+      input: {}
+    });
+
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      issues: Array<{ message: string }>;
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.issues.some((issue) => issue.message.includes("prototype"))).toBe(true);
+  });
+
+  it("rejects constructor fields in caller descriptors", async () => {
+    const { handlers } = makeRegisteredTools();
+    const result = await handlers.get("repair_tool_input")?.({
+      modelId: "deepseek-v4-pro",
+      schemaDescriptor: descriptorWithField("constructor"),
+      input: {}
+    });
+
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      issues: Array<{ message: string }>;
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.issues.some((issue) => issue.message.includes("constructor"))).toBe(true);
+  });
+
+  it("rejects dangerous keys in caller pathStringFields", async () => {
+    const { handlers } = makeRegisteredTools();
+    const result = await handlers.get("repair_tool_input")?.({
+      modelId: "deepseek-v4-pro",
+      schemaDescriptor: {
+        toolName: "dangerousPath",
+        schema: {
+          type: "object",
+          properties: {
+            safe: { type: "string" }
+          }
+        },
+        pathStringFields: ["__proto__"]
+      },
+      input: {}
+    });
+
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      issues: Array<{ message: string }>;
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.issues.some((issue) => issue.message.includes("__proto__"))).toBe(true);
+  });
+
+  it("rejects dangerous keys in caller pathStringArrayFields", async () => {
+    const { handlers } = makeRegisteredTools();
+    const result = await handlers.get("repair_tool_input")?.({
+      modelId: "deepseek-v4-pro",
+      schemaDescriptor: {
+        toolName: "dangerousArrayPath",
+        schema: {
+          type: "object",
+          properties: {
+            paths: {
+              type: "array",
+              items: { type: "string" }
+            }
+          }
+        },
+        pathStringArrayFields: ["constructor"]
+      },
+      input: {}
+    });
+
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      issues: Array<{ message: string }>;
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.issues.some((issue) => issue.message.includes("constructor"))).toBe(true);
+  });
+
+  it("allows normal nested safe caller descriptor fields", async () => {
+    const { handlers } = makeRegisteredTools();
+    const result = await handlers.get("repair_tool_input")?.({
+      modelId: "deepseek-v4-pro",
+      schemaDescriptor: {
+        toolName: "safeNested",
+        schema: {
+          type: "object",
+          properties: {
+            config: {
+              type: "object",
+              properties: {
+                value: { type: "string" }
+              }
+            }
+          }
+        }
+      },
+      input: {
+        config: {
+          value: "ok"
+        }
+      }
+    });
+
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      repaired: boolean;
+      sanitizedOutputPreview: unknown;
+    };
+
+    expect(body.valid).toBe(true);
+    expect(body.repaired).toBe(false);
+    expect(body.sanitizedOutputPreview).toEqual({
+      config: {
+        value: "ok"
+      }
+    });
+  });
+
   it("rejects oversized and deep caller descriptors safely", async () => {
     const { handlers } = makeRegisteredTools();
     const properties = Object.fromEntries(
@@ -457,6 +620,32 @@ describe("MCP tools", () => {
     expect(rawText).not.toContain("super secret file body");
     expect(rawText).not.toContain("raw-api-key-value");
     expect(rawText).not.toContain("raw-file-content-value");
+  });
+
+  it("does not leak raw secrets in invalid caller descriptor responses", async () => {
+    const { handlers } = makeRegisteredTools();
+    const result = await handlers.get("repair_tool_input")?.({
+      modelId: "deepseek-v4-pro",
+      schemaDescriptor: descriptorWithField("constructor"),
+      input: {
+        content: "password=raw-invalid-descriptor-password",
+        metadata: {
+          apiKey: "raw-invalid-descriptor-api-key"
+        }
+      }
+    });
+
+    const rawText = result?.content[0]?.text ?? "";
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      modelMessage: string;
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.modelMessage).toContain("Tool repair_tool_input input is invalid.");
+    expect(rawText).not.toContain("raw-invalid-descriptor-password");
+    expect(rawText).not.toContain("raw-invalid-descriptor-api-key");
   });
 
   it("summarizes file content, commands, headers, and env in telemetry responses", async () => {

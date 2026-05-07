@@ -10,7 +10,15 @@ const maxDescriptorPathEntries = 25;
 const maxSchemaDepth = 5;
 const maxRepairPathDepth = 1;
 
-const fieldNameSchema = z.string().min(1).max(100);
+const dangerousDescriptorKeys = new Set(["__proto__", "prototype", "constructor"]);
+const fieldNameSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .refine((value) => !containsDangerousDescriptorKey(value), {
+    message:
+      "Descriptor field names and paths must not contain __proto__, prototype, or constructor."
+  });
 
 export type CallerRepairSchemaType = "string" | "number" | "boolean" | "array" | "object";
 
@@ -57,6 +65,21 @@ export type CallerRepairSchemaDescriptorInput = z.infer<
 export type BuildRepairSchemaSpecResult =
   | { valid: true; spec: RepairSchemaSpec }
   | { valid: false; issues: IssueLike[]; expectedShape: string };
+
+export function findDangerousDescriptorKeyIssues(input: unknown): IssueLike[] {
+  if (!isRecord(input) || !("schemaDescriptor" in input)) {
+    return [];
+  }
+
+  const descriptor = input.schemaDescriptor;
+  if (!isRecord(descriptor)) {
+    return [];
+  }
+
+  const issues: IssueLike[] = [];
+  scanDangerousDescriptorKeys(descriptor, ["schemaDescriptor"], issues);
+  return issues;
+}
 
 export function buildRepairSchemaSpecFromDescriptor(
   descriptor: CallerRepairSchemaDescriptor
@@ -161,7 +184,7 @@ function buildZodSchema(node: CallerRepairSchemaNode, options: BuildZodOptions):
     case "object": {
       const properties = node.properties ?? {};
       const required = requiredFields(node);
-      const shape: Record<string, z.ZodType<unknown>> = {};
+      const shape = Object.create(null) as Record<string, z.ZodType<unknown>>;
       for (const [field, child] of Object.entries(properties)) {
         const childSchema = buildZodSchema(child, {
           ...options,
@@ -197,12 +220,22 @@ function validateSchemaNode(
     const properties = node.properties ?? {};
     const propertyNames = new Set(Object.keys(properties));
     for (const field of node.required ?? []) {
+      if (containsDangerousDescriptorKey(field)) {
+        issues.push(makeDangerousKeyIssue([...path, "required"], field));
+        continue;
+      }
+
       if (!propertyNames.has(field)) {
         issues.push(makeIssue([...path, "required"], `Required field ${field} is not declared in properties.`));
       }
     }
 
     for (const [field, child] of Object.entries(properties)) {
+      if (containsDangerousDescriptorKey(field)) {
+        issues.push(makeDangerousKeyIssue([...path, "properties", field], field));
+        continue;
+      }
+
       issues.push(...validateSchemaNode(child, [...path, "properties", field], depth + 1));
     }
   }
@@ -221,6 +254,11 @@ function validateRepairPaths(
 
   for (const [index, path] of paths.entries()) {
     const parts = path.split(".");
+    if (containsDangerousDescriptorKey(path)) {
+      issues.push(makeDangerousKeyIssue(["schemaDescriptor", field, index], path));
+      continue;
+    }
+
     if (parts.length > maxRepairPathDepth) {
       issues.push(
         makeIssue(
@@ -336,4 +374,65 @@ function makeIssue(path: Array<string | number>, message: string): IssueLike {
     path,
     message
   };
+}
+
+function makeDangerousKeyIssue(path: Array<string | number>, value: string): IssueLike {
+  return makeIssue(
+    path,
+    `Descriptor field names and paths must not contain dangerous object key ${value}.`
+  );
+}
+
+function scanDangerousDescriptorKeys(
+  value: unknown,
+  path: Array<string | number>,
+  issues: IssueLike[]
+): void {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      if (typeof item === "string" && shouldValidateDescriptorPathString(path)) {
+        const dangerousKey = dangerousKeyInPath(item);
+        if (dangerousKey) {
+          issues.push(makeDangerousKeyIssue([...path, index], dangerousKey));
+        }
+      }
+      scanDangerousDescriptorKeys(item, [...path, index], issues);
+    }
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  for (const key of Object.keys(value)) {
+    const dangerousKey = dangerousKeyInPath(key);
+    if (dangerousKey) {
+      issues.push(makeDangerousKeyIssue([...path, key], dangerousKey));
+      continue;
+    }
+
+    scanDangerousDescriptorKeys(value[key], [...path, key], issues);
+  }
+}
+
+function containsDangerousDescriptorKey(value: string): boolean {
+  return dangerousKeyInPath(value) !== undefined;
+}
+
+function dangerousKeyInPath(value: string): string | undefined {
+  return value.split(".").find((segment) => dangerousDescriptorKeys.has(segment));
+}
+
+function shouldValidateDescriptorPathString(path: Array<string | number>): boolean {
+  const key = path[path.length - 1];
+  return (
+    key === "pathStringFields" ||
+    key === "pathStringArrayFields" ||
+    key === "required"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

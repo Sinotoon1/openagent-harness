@@ -219,6 +219,8 @@ path auto-link repair. Descriptors are bounded by field count, repair path count
 repair path depth, and schema nesting depth. They drive validation and repair
 only; semantic normalization remains separate and currently applies only to
 explicit built-in normalization such as `readFile` relational defaults.
+Descriptor field names and configured paths must not contain dangerous object
+keys: `__proto__`, `prototype`, or `constructor`.
 
 Telemetry uses the memory sink by default and resets on process restart. An
 optional JSONL sink can persist sanitized events to a local file:
@@ -549,10 +551,17 @@ In `.vscode/mcp.json`:
 
 ## Release hygiene
 
-This candidate is prepared for the `v1.0.0-candidate.8` prerelease line. Before
+This candidate is prepared for the `v1.0.0-candidate.9` prerelease line. Before
 publishing to npm, verify that `package.json`, `package-lock.json`, and the git
 tag use the same candidate version. Do not publish automatically from this
 repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.9 release notes:
+
+- Rejects caller-provided repair schema descriptor object keys and path entries containing `__proto__`, `prototype`, or `constructor`.
+- Applies dangerous-key checks to nested descriptor object fields, `required` field references, `pathStringFields`, and `pathStringArrayFields`.
+- Preserves normal safe field names, caller-provided descriptor repair behavior, and built-in repair schemas.
+- Keeps invalid descriptor responses structured and model-readable without echoing raw inputs or secrets.
 
 Candidate.8 release notes:
 

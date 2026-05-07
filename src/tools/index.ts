@@ -6,7 +6,8 @@ import { repairToolInput, repairToolInputWithSpec } from "../repair/engine.js";
 import type { RepairToolInputResult } from "../repair/engine.js";
 import {
   buildRepairSchemaSpecFromDescriptor,
-  callerDescriptorExpectedShape
+  callerDescriptorExpectedShape,
+  findDangerousDescriptorKeyIssues
 } from "../repair/schemaDescriptors.js";
 import { sanitizeForResponse } from "../security/sanitize.js";
 import { queryTelemetry } from "../telemetry/query.js";
@@ -72,6 +73,16 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       inputSchema: repairToolInputSchema.shape
     },
     async (input) => {
+      const dangerousDescriptorIssues = findDangerousDescriptorKeyIssues(input);
+      if (dangerousDescriptorIssues.length > 0) {
+        return invalidToolInput(
+          deps,
+          "repair_tool_input",
+          dangerousDescriptorIssues,
+          callerDescriptorExpectedShape
+        );
+      }
+
       const parsed = repairToolInputSchema.safeParse(input);
       if (!parsed.success) {
         return invalidToolInput(
