@@ -36,6 +36,17 @@ export const getModelPolicyInputSchema = z
   })
   .strict();
 
+export const inspectModelPoliciesInputSchema = z
+  .object({
+    modelId: z.string().min(1).optional(),
+    includeProviders: z.boolean().default(true),
+    includeRepairs: z.boolean().default(true),
+    includeContext: z.boolean().default(true),
+    includeOverrides: z.boolean().default(true),
+    includeWarnings: z.boolean().default(true)
+  })
+  .strict();
+
 export const recordEvalEventInputSchema = z
   .object({
     sessionId: z.string().optional(),

@@ -25,6 +25,11 @@ type ToolHandler = (input: unknown) => Promise<{
 }>;
 
 const tempDirs: string[] = [];
+const allCapabilities: Required<CapabilityFlags> = {
+  zeroDataRetention: true,
+  disallowPromptTraining: true,
+  thinking: true
+};
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
@@ -179,6 +184,45 @@ describe("telemetry sinks", () => {
     });
   });
 
+  it("records thinking_overridden telemetry through the JSONL sink", async () => {
+    const filePath = tempTelemetryPath();
+    const sink = new JsonlTelemetrySink(filePath);
+    const providerTwo = new JsonlFakeProvider("providerTwo", allCapabilities);
+    const router = new ChatRouter([providerTwo], sink);
+
+    const result = await router.route({
+      modelId: "deepseek-v4-pro",
+      sessionId: "jsonl-thinking-session",
+      messages: [{ role: "user", content: "hello" }],
+      providerPriority: ["providerTwo"],
+      capabilities: {
+        thinking: true
+      }
+    });
+    const overridden = queryTelemetry(sink, {
+      type: "thinking_overridden",
+      providerId: "providerTwo",
+      includeMetadata: true,
+      limit: 10
+    });
+
+    expect(result.capabilities.thinking).toBeUndefined();
+    expect(overridden.total).toBe(1);
+    expect(overridden.events[0]).toMatchObject({
+      type: "thinking_overridden",
+      modelId: "deepseek-v4-pro",
+      providerId: "providerTwo",
+      capability: "thinking",
+      metadata: {
+        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled",
+        source: "model_policy",
+        override: "thinking_disabled",
+        attemptIndex: 0
+      }
+    });
+    expect(readFileSync(filePath, "utf8")).toContain("thinking_overridden");
+  });
+
   it("serves query, stats, and repair suggestion MCP tools from JSONL telemetry", async () => {
     const filePath = tempTelemetryPath();
     const sink = new JsonlTelemetrySink(filePath);
@@ -327,7 +371,11 @@ function tempTelemetryPath(): string {
 }
 
 class JsonlFakeProvider implements ProviderAdapter {
-  readonly supportedModels: CanonicalModelId[] = ["kimi-k2-6"];
+  readonly supportedModels: CanonicalModelId[] = [
+    "kimi-k2-6",
+    "deepseek-v4-pro",
+    "deepseek-flash"
+  ];
   readonly calls: ProviderChatRequest[] = [];
 
   constructor(

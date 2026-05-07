@@ -1,40 +1,50 @@
-# Changelog
+## oss-agent-harness-mcp v1.0.0-candidate.11
 
-## v1.0.0-candidate.9
+This candidate release adds read-only MCP inspection for model policies.
 
-This candidate release hardens caller-provided repair schema descriptors against dangerous object keys.
+### Added
 
-### Changed
-
-- Caller-provided repair schema descriptors now reject dangerous path segments:
-  - `__proto__`
-  - `prototype`
-  - `constructor`
-
-### Covered
-
-- Descriptor object field names.
-- Nested descriptor fields.
-- `required` paths.
-- `pathStringFields`.
-- `pathStringArrayFields`.
+- New `inspect_model_policies` MCP tool for sanitized policy summaries.
+- Include flags for provider details, repairs, context, provider overrides, and warnings.
+- Policy inspection warnings for unknown provider overrides, duplicate overrides, empty repairs, missing effective context tokens, unordered context thresholds, unknown repairs, and no-op overrides.
 
 ### Preserved
 
-- Safe nested fields.
-- Built-in schemas.
-- Bounded candidate.8 descriptor behavior.
-- Validate-then-repair behavior.
-- Issue-path precise repair.
-- Valid-input zero-touch.
-- Sanitized MCP responses.
-- Existing provider routing, streaming, telemetry, context compaction, and MCP tool names.
+- Policy inspection does not edit YAML or auto-apply suggestions.
+- Provider account management, live credential validation, dashboard behavior, and eval-platform behavior remain out of scope.
+- Repair behavior, provider routing behavior, streaming behavior, telemetry sinks, JSONL behavior, security sanitization, session hashing, context compaction, provider config validation, MCP tool names, and caller-provided schema descriptor behavior are unchanged.
 
 ### Validation
 
-- `npm test`: 8 test files passed, 85 tests passed.
+- `npm test`: 9 test files passed, 104 tests passed.
+- `npm run build`: passed.
+
+## oss-agent-harness-mcp v1.0.0-candidate.10
+
+This candidate release externalizes model/provider-specific quirks into model policy configuration.
+
+### Changed
+
+- Moved the DeepSeek v4 Pro + providerTwo thinking override out of hardcoded router/capability logic.
+- The override now lives in `src/policies/deepseek-v4-pro.yaml`.
+- Provider overrides are loaded through the model policy loader.
+- Policy overrides are applied after per-attempt capability negotiation.
+
+### Preserved
+
+- DeepSeek v4 Pro + providerTwo still runs with thinking disabled.
+- Other DeepSeek providers are unaffected.
+- Other models are unaffected.
+- Per-attempt capability negotiation remains unchanged.
+- `capability_dropped` telemetry remains unchanged.
+- `thinking_overridden` telemetry remains provider-attempt-aware and now includes `source: "model_policy"`.
+- The project remains a model/provider-aware harness, not a provider gateway.
+
+### Validation
+
+- `npm test`: 9 test files passed, 93 tests passed.
 - `npm run build`: passed.
 
 ### Known Caveat
 
-- Dangerous-key rejection is segment-based, so dotted field names containing `constructor`, `prototype`, or `__proto__` as path segments are rejected conservatively.
+- The policy schema allows future `thinking: enabled` overrides, but the policy shape remains narrow and strict. Overrides only apply when explicitly declared in a model policy.

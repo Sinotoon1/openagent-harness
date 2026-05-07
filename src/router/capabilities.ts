@@ -1,10 +1,10 @@
 import type {
-  CanonicalModelId,
   CapabilityFlags,
   CapabilityName,
   ProviderId
 } from "../types.js";
 import { capabilityNames } from "../types.js";
+import type { ModelPolicy, ProviderModelOverride } from "../policies/types.js";
 import type { TelemetrySink } from "../telemetry/types.js";
 import type { ProviderAdapter } from "../providers/types.js";
 
@@ -18,7 +18,7 @@ export function negotiateCapabilities(
   provider: ProviderAdapter,
   metadata: {
     sessionId?: string;
-    modelId?: CanonicalModelId;
+    modelId?: ModelPolicy["modelId"];
     attemptIndex?: number;
     telemetry?: TelemetrySink;
   } = {}
@@ -54,8 +54,8 @@ export function negotiateCapabilities(
 }
 
 export function applyProviderModelOverrides(
-  modelId: CanonicalModelId,
-  providerId: ProviderId,
+  modelPolicy: ModelPolicy,
+  provider: ProviderAdapter,
   capabilities: CapabilityFlags,
   metadata: {
     sessionId?: string;
@@ -63,22 +63,50 @@ export function applyProviderModelOverrides(
     telemetry?: TelemetrySink;
   } = {}
 ): CapabilityFlags {
-  if (modelId === "deepseek-v4-pro" && providerId === "providerTwo" && capabilities.thinking) {
+  const override = modelPolicy.providerOverrides?.find(
+    (candidate) => candidate.providerId === provider.id
+  );
+  if (!override || override.thinking === "unchanged") {
+    return capabilities;
+  }
+
+  if (override.thinking === "disabled" && capabilities.thinking) {
     const next = { ...capabilities };
     delete next.thinking;
-    metadata.telemetry?.record({
-      type: "thinking_overridden",
-      sessionId: metadata.sessionId,
-      modelId,
-      providerId,
-      capability: "thinking",
-      metadata: {
-        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled",
-        ...(metadata.attemptIndex !== undefined ? { attemptIndex: metadata.attemptIndex } : {})
-      }
-    });
+    recordThinkingOverride(modelPolicy, provider.id, override, metadata);
+    return next;
+  }
+
+  if (override.thinking === "enabled" && provider.capabilities.thinking && !capabilities.thinking) {
+    const next = { ...capabilities, thinking: true };
+    recordThinkingOverride(modelPolicy, provider.id, override, metadata);
     return next;
   }
 
   return capabilities;
+}
+
+function recordThinkingOverride(
+  modelPolicy: ModelPolicy,
+  providerId: ProviderId,
+  override: ProviderModelOverride,
+  metadata: {
+    sessionId?: string;
+    attemptIndex?: number;
+    telemetry?: TelemetrySink;
+  }
+): void {
+  metadata.telemetry?.record({
+    type: "thinking_overridden",
+    sessionId: metadata.sessionId,
+    modelId: modelPolicy.modelId,
+    providerId,
+    capability: "thinking",
+    metadata: {
+      reason: override.reason ?? `model policy set thinking ${override.thinking}`,
+      source: "model_policy",
+      override: `thinking_${override.thinking}`,
+      ...(metadata.attemptIndex !== undefined ? { attemptIndex: metadata.attemptIndex } : {})
+    }
+  });
 }

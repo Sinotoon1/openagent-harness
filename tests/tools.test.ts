@@ -68,6 +68,147 @@ describe("MCP tools", () => {
     expect(handlers.has("get_harness_stats")).toBe(true);
   });
 
+  it("registers inspect_model_policies", () => {
+    const { handlers } = makeRegisteredTools();
+
+    expect(handlers.has("inspect_model_policies")).toBe(true);
+  });
+
+  it("lists all model policies through inspect_model_policies", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const body = parseToolResult(
+      (await handlers.get("inspect_model_policies")?.({}))!
+    ) as {
+      models: Array<{
+        modelId: string;
+        repairs: string[];
+        context: { effectiveContextTokens: number };
+        providerOverrides: unknown[];
+        warnings: unknown[];
+        valid: boolean;
+      }>;
+    };
+
+    expect(body.models.map((model) => model.modelId)).toEqual([
+      "kimi-k2-6",
+      "deepseek-v4-pro",
+      "deepseek-flash"
+    ]);
+    expect(body.models.every((model) => model.valid)).toBe(true);
+  });
+
+  it("filters inspect_model_policies by modelId", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const body = parseToolResult(
+      (await handlers.get("inspect_model_policies")?.({ modelId: "deepseek-v4-pro" }))!
+    ) as { models: Array<{ modelId: string }> };
+
+    expect(body.models.map((model) => model.modelId)).toEqual(["deepseek-v4-pro"]);
+  });
+
+  it("shows the DeepSeek provider override from YAML in inspect_model_policies", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const body = parseToolResult(
+      (await handlers.get("inspect_model_policies")?.({ modelId: "deepseek-v4-pro" }))!
+    ) as {
+      models: Array<{
+        providerOverrides: Array<{
+          providerId: string;
+          thinking: string;
+          reason: string;
+        }>;
+      }>;
+    };
+
+    expect(body.models[0]?.providerOverrides).toEqual([
+      {
+        providerId: "providerTwo",
+        thinking: "disabled",
+        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled"
+      }
+    ]);
+  });
+
+  it("hides repairs when inspect_model_policies includeRepairs is false", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const body = parseToolResult(
+      (await handlers.get("inspect_model_policies")?.({
+        modelId: "deepseek-v4-pro",
+        includeRepairs: false
+      }))!
+    ) as { models: Array<Record<string, unknown>> };
+
+    expect(body.models[0]).not.toHaveProperty("repairs");
+    expect(body.models[0]).toHaveProperty("context");
+  });
+
+  it("hides context when inspect_model_policies includeContext is false", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const body = parseToolResult(
+      (await handlers.get("inspect_model_policies")?.({
+        modelId: "deepseek-v4-pro",
+        includeContext: false
+      }))!
+    ) as { models: Array<Record<string, unknown>> };
+
+    expect(body.models[0]).not.toHaveProperty("context");
+    expect(body.models[0]).toHaveProperty("repairs");
+  });
+
+  it("hides providerOverrides when inspect_model_policies includeOverrides is false", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const body = parseToolResult(
+      (await handlers.get("inspect_model_policies")?.({
+        modelId: "deepseek-v4-pro",
+        includeOverrides: false
+      }))!
+    ) as { models: Array<Record<string, unknown>> };
+
+    expect(body.models[0]).not.toHaveProperty("providerOverrides");
+    expect(body.models[0]).toHaveProperty("warnings");
+  });
+
+  it("returns a structured invalid response for unknown inspect_model_policies modelId", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const result = await handlers.get("inspect_model_policies")?.({
+      modelId: "not-a-model"
+    });
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      modelMessage: string;
+      issues: Array<{ path: string; message: string }>;
+      error: { toolName: string; modelMessage: string };
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.modelMessage).toContain("Tool inspect_model_policies input is invalid.");
+    expect(body.issues[0]?.path).toBe("modelId");
+    expect(body.issues[0]?.message).toContain("Unknown modelId not-a-model.");
+    expect(body.error.toolName).toBe("inspect_model_policies");
+    expect(body.error.modelMessage).toBe(body.modelMessage);
+  });
+
+  it("does not expose provider credentials through inspect_model_policies", async () => {
+    const { handlers } = makeRegisteredTools();
+
+    const response =
+      (await handlers.get("inspect_model_policies")?.({ includeWarnings: true }))?.content[0]
+        ?.text ?? "";
+
+    expect(response).not.toContain("PROVIDER_ONE_API_KEY");
+    expect(response).not.toContain("PROVIDER_TWO_API_KEY");
+    expect(response).not.toContain("YOUR_KEY");
+    expect(response).not.toContain("sk-");
+  });
+
   it("returns standardized invalid responses with modelMessage", async () => {
     const { handlers } = makeRegisteredTools();
     const result = await handlers.get("get_model_policy")?.({ modelId: "not-a-model" });

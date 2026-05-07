@@ -1,5 +1,6 @@
 import type { ProviderAdapter } from "../providers/types.js";
 import { ProviderError } from "../providers/providerError.js";
+import { loadModelPolicy } from "../policies/loader.js";
 import type { TelemetrySink } from "../telemetry/types.js";
 import type { OssChatInput, OssChatOutput, ProviderId } from "../types.js";
 import { providerIds } from "../types.js";
@@ -25,6 +26,7 @@ export class ChatRouter {
       });
     }
 
+    const modelPolicy = loadModelPolicy(input.modelId);
     const attempts: OssChatOutput["attempts"] = [];
 
     for (const [index, provider] of selectedProviders.entries()) {
@@ -35,8 +37,8 @@ export class ChatRouter {
         telemetry: this.telemetry
       });
       const capabilities = applyProviderModelOverrides(
-        input.modelId,
-        provider.id,
+        modelPolicy,
+        provider,
         negotiation.capabilities,
         {
           sessionId: input.sessionId,

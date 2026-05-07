@@ -17,6 +17,10 @@ only model-aware repair, routing/capability negotiation, session pinning,
 context-budget safety checks, safe local telemetry, and streaming/fallback
 guards.
 
+In short, the harness owns model/provider-aware policy; provider account
+management and live credential validation remain out of scope, and this is not a
+provider gateway or eval platform.
+
 IDE and coding-agent callers are responsible for deciding which files, messages,
 diagnostics, shell output, git diffs, search results, and tool results belong in
 the request. `compact_context` is only a model-aware context budget guard; it is
@@ -51,7 +55,7 @@ tool registry.
 
 ## Safe Future Work
 
-- model policy validation
+- broader model policy validation
 - stricter compaction budget guarantees
 - safer JSONL bounds
 - provider capability metadata
@@ -73,7 +77,8 @@ All major P0 architecture from the audit is implemented:
 - canonical model ID boundary
 - provider session pinning
 - per-attempt capability negotiation
-- DeepSeek thinking override
+- policy-backed DeepSeek thinking override
+- model policy inspection
 - effective-context compaction
 - telemetry query/report tools
 - OpenAI-compatible SSE streaming
@@ -85,6 +90,7 @@ All major P0 architecture from the audit is implemented:
 - `repair_tool_input`: validates first, repairs only after validation fails, then validates again; it is not a general external tool registry.
 - `compact_context`: compacts against effective context tokens, never advertised context.
 - `get_model_policy`: returns YAML-backed policy for one or all canonical models.
+- `inspect_model_policies`: returns sanitized, read-only policy summaries with validation warnings; it does not edit policy YAML.
 - `record_eval_event`: records local harness notes/telemetry only, not full eval-platform or experiment-tracker state.
 - `query_telemetry`: queries configured local harness telemetry with bounded, redacted metadata.
 - `get_harness_stats`: summarizes recent sanitized harness health telemetry, not billing or SLA observability.
@@ -169,6 +175,37 @@ Provider names are placeholders until their `*_BASE_URL` and optional API key
 environment variables point at real OpenAI-compatible services. See
 [`docs/provider-matrix.md`](docs/provider-matrix.md) for provider smoke-test
 guidance.
+
+## Model policy
+
+Model policies live in `src/policies/*.yaml` and are copied to `dist/policies`
+during build. They define model-aware repair order, effective context tokens, and
+narrow provider-specific overrides for known model/provider quirks. This is the
+harness-owned model/provider-aware policy layer; provider account management and
+live credential validation remain out of scope.
+
+Use `inspect_model_policies` to inspect the loaded model policies through MCP
+without exposing provider credentials or editing YAML. The tool can list all
+policies or filter by `modelId`, and callers can include or hide repairs,
+context, provider overrides, and warnings. Policy inspection is meant to make
+model-specific harness behavior easier to update in YAML/config without changing
+TypeScript logic. It does not auto-apply suggestions, validate live provider
+accounts, or add eval-platform behavior.
+
+Provider overrides intentionally support only a small capability policy shape:
+
+```yaml
+providerOverrides:
+  - providerId: providerTwo
+    thinking: disabled
+    reason: deepseek-v4-pro on providerTwo must run with thinking disabled
+```
+
+`thinking` may be `enabled`, `disabled`, or `unchanged`. For example,
+`deepseek-v4-pro` disables `thinking` only on `providerTwo`; `providerOne`,
+other DeepSeek models, and Kimi are unaffected. Unsupported capability flags are
+still omitted from provider requests, and `capability_dropped` /
+`thinking_overridden` telemetry remains provider-attempt aware.
 
 ## Hardening behavior
 
@@ -439,6 +476,21 @@ window only.
 }
 ```
 
+### `inspect_model_policies`
+
+`inspect_model_policies` is read-only. It reports loaded model policy summaries
+and validation warnings; it does not edit YAML or apply policy suggestions.
+
+```json
+{
+  "modelId": "deepseek-v4-pro",
+  "includeRepairs": true,
+  "includeContext": true,
+  "includeOverrides": true,
+  "includeWarnings": true
+}
+```
+
 ### `record_eval_event`
 
 `record_eval_event` is for local harness notes and telemetry only. It is not a
@@ -551,10 +603,26 @@ In `.vscode/mcp.json`:
 
 ## Release hygiene
 
-This candidate is prepared for the `v1.0.0-candidate.9` prerelease line. Before
+This candidate is prepared for the `v1.0.0-candidate.11` prerelease line. Before
 publishing to npm, verify that `package.json`, `package-lock.json`, and the git
 tag use the same candidate version. Do not publish automatically from this
 repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.11 release notes:
+
+- Adds the read-only `inspect_model_policies` MCP tool.
+- Returns sanitized policy summaries with repairs, effective context tokens, provider overrides, warnings, and validation status.
+- Supports include flags for providers, repairs, context, overrides, and warnings.
+- Adds policy inspection warnings for unknown provider overrides, duplicate overrides, empty repairs, missing context tokens, unordered context thresholds, unknown repairs, and no-op overrides.
+- Keeps policy inspection non-editing and preserves the boundary that provider account management and eval-platform behavior are out of scope.
+
+Candidate.10 release notes:
+
+- Externalizes the `deepseek-v4-pro` + `providerTwo` thinking override into model policy YAML.
+- Adds narrow provider-specific policy overrides with `providerId`, `thinking`, and optional `reason`.
+- Applies model/provider policy overrides immediately after per-attempt capability negotiation.
+- Keeps unsupported capability drops, `thinking_overridden` telemetry, JSONL telemetry handling, and MCP tool names intact without renaming or removing existing response fields.
+- Documents policy-backed model/provider quirks while preserving the boundary that this is not a provider gateway or eval platform.
 
 Candidate.9 release notes:
 

@@ -8,6 +8,7 @@ const knownToolNames = new Set([
   "repair_tool_input",
   "compact_context",
   "get_model_policy",
+  "inspect_model_policies",
   "record_eval_event",
   "query_telemetry",
   "get_harness_stats",

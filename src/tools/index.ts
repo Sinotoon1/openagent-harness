@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ChatRouter } from "../router/chatRouter.js";
 import { compactContext } from "../context/compact.js";
+import { inspectModelPolicies } from "../policies/inspect.js";
 import { loadAllModelPolicies, loadModelPolicy } from "../policies/loader.js";
 import { repairToolInput, repairToolInputWithSpec } from "../repair/engine.js";
 import type { RepairToolInputResult } from "../repair/engine.js";
@@ -14,6 +15,7 @@ import { queryTelemetry } from "../telemetry/query.js";
 import { createRepairTelemetryReport } from "../telemetry/repairReport.js";
 import { getHarnessStats } from "../telemetry/stats.js";
 import type { TelemetrySink } from "../telemetry/types.js";
+import { canonicalModelIds, type CanonicalModelId } from "../types.js";
 import {
   makeInvalidToolResponse,
   type IssueLike
@@ -24,6 +26,7 @@ import {
   compactContextInputSchema,
   getHarnessStatsInputSchema,
   getModelPolicyInputSchema,
+  inspectModelPoliciesInputSchema,
   ossChatInputSchema,
   queryTelemetryInputSchema,
   recordEvalEventInputSchema,
@@ -230,6 +233,48 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
+    "inspect_model_policies",
+    {
+      title: "Inspect Model Policies",
+      description:
+        "Return sanitized, read-only model policy summaries with validation warnings.",
+      inputSchema: inspectModelPoliciesInputSchema.shape
+    },
+    async (input) => {
+      const parsed = inspectModelPoliciesInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalidToolInput(
+          deps,
+          "inspect_model_policies",
+          parsed.error.issues,
+          expectedShapes.inspect_model_policies
+        );
+      }
+
+      const modelId = parsed.data.modelId;
+      if (modelId !== undefined && !isCanonicalModelId(modelId)) {
+        return invalidToolInput(
+          deps,
+          "inspect_model_policies",
+          [
+            {
+              code: "invalid_value",
+              path: ["modelId"],
+              message: `Unknown modelId ${modelId}. Expected one of: ${canonicalModelIds.join(", ")}.`
+            }
+          ],
+          expectedShapes.inspect_model_policies
+        );
+      }
+
+      const policies =
+        modelId === undefined ? loadAllModelPolicies() : [loadModelPolicy(modelId)];
+
+      return asJsonText(inspectModelPolicies(policies, parsed.data));
+    }
+  );
+
+  server.registerTool(
     "record_eval_event",
     {
       title: "Record Eval Event",
@@ -421,6 +466,8 @@ const expectedShapes = {
   compact_context:
     "{ modelId: canonicalModelId; messages: ChatMessage[]; sessionId?: string; usedTokens?: nonnegative integer; inFlightTaskMessageIds?: string[] }",
   get_model_policy: "{ modelId?: canonicalModelId }",
+  inspect_model_policies:
+    "{ modelId?: string; includeProviders?: boolean; includeRepairs?: boolean; includeContext?: boolean; includeOverrides?: boolean; includeWarnings?: boolean }",
   record_eval_event:
     "{ eventName: string; sessionId?: string; modelId?: canonicalModelId; outcome?: pass | fail | skip | error; score?: number; metadata?: object }",
   query_telemetry:
@@ -467,4 +514,8 @@ function unique<T>(values: T[]): T[] {
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function isCanonicalModelId(value: string): value is CanonicalModelId {
+  return (canonicalModelIds as readonly string[]).includes(value);
 }

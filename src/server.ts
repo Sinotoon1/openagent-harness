@@ -10,7 +10,7 @@ import { registerTools } from "./tools/index.js";
 export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: "oss-agent-harness-mcp",
-    version: "1.0.0-candidate.9"
+    version: "1.0.0-candidate.11"
   });
   const telemetry = createTelemetrySinkFromEnv();
   const router = new ChatRouter(createProviderAdaptersFromEnv(), telemetry);

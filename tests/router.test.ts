@@ -205,27 +205,60 @@ describe("ChatRouter", () => {
     ]);
   });
 
-  it("overrides thinking only for deepseek-v4-pro on providerTwo", async () => {
+  it("overrides thinking for deepseek-v4-pro on providerTwo", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = new FakeProvider("providerOne", allCapabilities);
     const providerTwo = new FakeProvider("providerTwo", allCapabilities);
-    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+    const router = new ChatRouter([providerTwo], telemetry);
 
-    const providerTwoDeepSeek = await router.route({
+    const result = await router.route({
       modelId: "deepseek-v4-pro",
       sessionId: "s1",
       messages: [{ role: "user", content: "hello" }],
       providerPriority: ["providerTwo"],
       capabilities: { thinking: true }
     });
-    const providerOneDeepSeek = await router.route({
+
+    expect(result.capabilities.thinking).toBeUndefined();
+    expect(providerTwo.calls[0]?.capabilities.thinking).toBeUndefined();
+    expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toMatchObject([
+      {
+        modelId: "deepseek-v4-pro",
+        providerId: "providerTwo",
+        capability: "thinking",
+        metadata: {
+          reason: "deepseek-v4-pro on providerTwo must run with thinking disabled",
+          source: "model_policy",
+          override: "thinking_disabled",
+          attemptIndex: 0
+        }
+      }
+    ]);
+  });
+
+  it("does not override thinking for deepseek-v4-pro on providerOne", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const providerOne = new FakeProvider("providerOne", allCapabilities);
+    const router = new ChatRouter([providerOne], telemetry);
+
+    const result = await router.route({
       modelId: "deepseek-v4-pro",
       sessionId: "s2",
       messages: [{ role: "user", content: "hello" }],
       providerPriority: ["providerOne"],
       capabilities: { thinking: true }
     });
-    const providerTwoKimi = await router.route({
+
+    expect(result.capabilities.thinking).toBe(true);
+    expect(providerOne.calls[0]?.capabilities.thinking).toBe(true);
+    expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toHaveLength(0);
+  });
+
+  it("does not apply the DeepSeek providerTwo override to kimi-k2-6", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const providerTwo = new FakeProvider("providerTwo", allCapabilities);
+    const router = new ChatRouter([providerTwo], telemetry);
+
+    const result = await router.route({
       modelId: "kimi-k2-6",
       sessionId: "s3",
       messages: [{ role: "user", content: "hello" }],
@@ -233,13 +266,9 @@ describe("ChatRouter", () => {
       capabilities: { thinking: true }
     });
 
-    expect(providerTwoDeepSeek.capabilities.thinking).toBeUndefined();
-    expect(providerTwo.calls[0]?.capabilities.thinking).toBeUndefined();
-    expect(providerOneDeepSeek.capabilities.thinking).toBe(true);
-    expect(providerOne.calls[0]?.capabilities.thinking).toBe(true);
-    expect(providerTwoKimi.capabilities.thinking).toBe(true);
-    expect(providerTwo.calls[1]?.capabilities.thinking).toBe(true);
-    expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toHaveLength(1);
+    expect(result.capabilities.thinking).toBe(true);
+    expect(providerTwo.calls[0]?.capabilities.thinking).toBe(true);
+    expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toHaveLength(0);
   });
 
   it("emits likely cold then warm cache telemetry for repeated session/model/provider", async () => {

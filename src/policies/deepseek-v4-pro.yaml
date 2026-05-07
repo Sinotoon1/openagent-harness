@@ -5,3 +5,7 @@ repairs:
   - stripNullOptional
   - markdownPathAutolinkUnwrap
 effectiveContextTokens: 100000
+providerOverrides:
+  - providerId: providerTwo
+    thinking: disabled
+    reason: deepseek-v4-pro on providerTwo must run with thinking disabled
