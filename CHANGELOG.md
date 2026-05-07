@@ -1,3 +1,27 @@
+## oss-agent-harness-mcp v1.0.0-candidate.15
+
+This candidate release polishes release documentation and npm packaging metadata for a production-ready v1 decision.
+
+### Changed
+
+- Kept `README.md` concise by moving detailed runtime notes and MCP client examples into `docs/`.
+- Added `docs/production-ready-checklist.md` with explicit criteria for a production-ready v1 decision.
+- Added `docs/release-readiness-audit.md` with remaining issues classified as blocker, before production-ready v1, candidate caveat, and later.
+- Added `CHANGELOG.md` and `docs/` to the npm package `files` list so package dry runs include release history and useful docs.
+- Updated package metadata and MCP server advertised version to `1.0.0-candidate.15`.
+
+### Preserved
+
+- No MCP tools were added.
+- No production readiness is claimed.
+- Repair behavior, provider routing, streaming behavior, telemetry sinks, JSONL behavior, security sanitization, session hashing, context compaction, caller-provided schema descriptors, capability negotiation, policy loading, and policy doctor behavior are unchanged.
+
+### Validation
+
+- `npm test`: 10 test files passed, 133 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 120 files, 71.8 kB package, 344.7 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.14
 
 This candidate release adds a read-only policy doctor / harness health check.
