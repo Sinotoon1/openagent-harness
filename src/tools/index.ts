@@ -2,8 +2,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ChatRouter } from "../router/chatRouter.js";
 import { compactContext } from "../context/compact.js";
 import { loadAllModelPolicies, loadModelPolicy } from "../policies/loader.js";
-import { repairToolInput } from "../repair/engine.js";
+import { repairToolInput, repairToolInputWithSpec } from "../repair/engine.js";
 import type { RepairToolInputResult } from "../repair/engine.js";
+import {
+  buildRepairSchemaSpecFromDescriptor,
+  callerDescriptorExpectedShape
+} from "../repair/schemaDescriptors.js";
 import { sanitizeForResponse } from "../security/sanitize.js";
 import { queryTelemetry } from "../telemetry/query.js";
 import { createRepairTelemetryReport } from "../telemetry/repairReport.js";
@@ -78,9 +82,67 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
         );
       }
 
+      const hasBuiltInSchema = parsed.data.schemaName !== undefined;
+      const hasSchemaDescriptor = parsed.data.schemaDescriptor !== undefined;
+      if (hasBuiltInSchema === hasSchemaDescriptor) {
+        return invalidToolInput(
+          deps,
+          "repair_tool_input",
+          [
+            {
+              code: "invalid_value",
+              path: ["schemaName"],
+              message: "Provide exactly one of schemaName or schemaDescriptor."
+            }
+          ],
+          expectedShapes.repair_tool_input
+        );
+      }
+
+      if (parsed.data.schemaDescriptor) {
+        const buildResult = buildRepairSchemaSpecFromDescriptor(parsed.data.schemaDescriptor);
+        if (!buildResult.valid) {
+          return invalidToolInput(
+            deps,
+            "repair_tool_input",
+            buildResult.issues,
+            callerDescriptorExpectedShape
+          );
+        }
+
+        const repairResult = repairToolInputWithSpec(
+          parsed.data.modelId,
+          buildResult.spec,
+          parsed.data.input,
+          {
+            sessionId: parsed.data.sessionId,
+            telemetry: deps.telemetry,
+            toolName: "repair_tool_input"
+          }
+        );
+
+        return asJsonText(toRepairToolResponse(repairResult), !repairResult.valid);
+      }
+
+      const schemaName = parsed.data.schemaName;
+      if (schemaName === undefined) {
+        return invalidToolInput(
+          deps,
+          "repair_tool_input",
+          [
+            {
+              code: "invalid_value",
+              path: ["schemaName"],
+              message: "schemaName is required when schemaDescriptor is not provided."
+            }
+          ],
+          expectedShapes.repair_tool_input
+        );
+      }
+
       const repairResult = repairToolInput(
         parsed.data.modelId,
-        parsed.data.schemaName,
+        schemaName,
         parsed.data.input,
         {
           sessionId: parsed.data.sessionId,
@@ -94,7 +156,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       }
 
       const normalizationResult = normalizeToolInput(
-        parsed.data.schemaName,
+        schemaName,
         repairResult.data,
         {
           sessionId: parsed.data.sessionId,
@@ -344,7 +406,7 @@ const expectedShapes = {
   oss_chat:
     "{ modelId: canonicalModelId; sessionId: string; messages: ChatMessage[]; providerPriority?: ProviderId[]; capabilities?: CapabilityFlags; temperature?: number; maxTokens?: number; metadata?: object }",
   repair_tool_input:
-    "{ modelId: canonicalModelId; schemaName: oss_chat | readFile | writeFile | pathBatch; input: unknown; sessionId?: string }",
+    "{ modelId: canonicalModelId; input: unknown; sessionId?: string; schemaName?: oss_chat | readFile | writeFile | pathBatch; schemaDescriptor?: { toolName: string; schema: callerRepairSchema; pathStringFields?: string[]; pathStringArrayFields?: string[] }; provide exactly one of schemaName or schemaDescriptor }",
   compact_context:
     "{ modelId: canonicalModelId; messages: ChatMessage[]; sessionId?: string; usedTokens?: nonnegative integer; inFlightTaskMessageIds?: string[] }",
   get_model_policy: "{ modelId?: canonicalModelId }",

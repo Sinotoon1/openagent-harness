@@ -52,7 +52,6 @@ tool registry.
 ## Safe Future Work
 
 - model policy validation
-- caller-provided repair schema descriptors
 - stricter compaction budget guarantees
 - safer JSONL bounds
 - provider capability metadata
@@ -207,9 +206,19 @@ and only edits fields reported by validation. For example, markdown path
 auto-link unwrapping can run for configured `pathString` fields and path arrays,
 but it will not touch `writeFile.content` or any other non-issue field.
 Built-in repair schemas are intentionally small compatibility helpers for this
-harness. External IDE/tool schema ownership remains with the caller. Future
-schema support should prefer caller-supplied schema descriptors rather than
-expanding hard-coded schemas indefinitely.
+harness, not a general tool registry. External IDE/tool schema ownership remains
+with the caller. For external tools, callers should pass a `schemaDescriptor` to
+`repair_tool_input` instead of expecting this harness to grow hard-coded schemas
+indefinitely.
+
+Caller-provided repair schema descriptors are intentionally small. They support
+`toolName`, a `schema` tree with `string`, `number`, `boolean`, `array`, and
+`object` nodes, object `properties`, optional `required` arrays, optional node
+flags, and top-level `pathStringFields` / `pathStringArrayFields` for markdown
+path auto-link repair. Descriptors are bounded by field count, repair path count,
+repair path depth, and schema nesting depth. They drive validation and repair
+only; semantic normalization remains separate and currently applies only to
+explicit built-in normalization such as `readFile` relational defaults.
 
 Telemetry uses the memory sink by default and resets on process restart. An
 optional JSONL sink can persist sanitized events to a local file:
@@ -346,6 +355,36 @@ collected output after the provider stream completes.
   "input": { "paths": "src/server.ts" }
 }
 ```
+
+### `repair_tool_input` with caller schema descriptor
+
+```json
+{
+  "modelId": "deepseek-v4-pro",
+  "schemaDescriptor": {
+    "toolName": "callerPathBatch",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "label": { "type": "string", "optional": true }
+      },
+      "required": ["paths"]
+    },
+    "pathStringArrayFields": ["paths"]
+  },
+  "input": {
+    "paths": "[src/a.ts](src/a.ts)"
+  }
+}
+```
+
+The caller owns the external tool schema and tool execution. The harness only
+validates model-produced input against the descriptor, applies enabled
+model-aware repairs, and returns a sanitized repair result.
 
 ### `compact_context`
 
@@ -510,10 +549,20 @@ In `.vscode/mcp.json`:
 
 ## Release hygiene
 
-This candidate is prepared for the `v1.0.0-candidate.7` prerelease line. Before
+This candidate is prepared for the `v1.0.0-candidate.8` prerelease line. Before
 publishing to npm, verify that `package.json`, `package-lock.json`, and the git
 tag use the same candidate version. Do not publish automatically from this
 repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.8 release notes:
+
+- Adds caller-provided `repair_tool_input.schemaDescriptor` support for external tool input repair.
+- Keeps built-in repair schemas for backward compatibility.
+- Builds bounded runtime validators from a small JSON-schema-like descriptor subset.
+- Preserves validate-then-repair, valid-input zero-touch, issue-path precise repair, and existing repair order.
+- Keeps repair and semantic normalization separate; caller descriptors do not add relational defaults.
+- Rejects invalid, oversized, or too-deep descriptors with structured issues and a model-readable retry message.
+- Documents that callers own external tool schemas and execution; this harness remains a narrow model-aware repair utility, not a tool registry.
 
 Candidate.7 release notes:
 

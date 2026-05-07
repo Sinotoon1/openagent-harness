@@ -6,6 +6,7 @@ import {
   ossChatInputSchema,
   repairSchemaNames
 } from "../repair/schemaSpecs.js";
+import { callerRepairSchemaDescriptorInputSchema } from "../repair/schemaDescriptors.js";
 
 export { ossChatInputSchema };
 
@@ -13,7 +14,8 @@ export const repairToolInputSchema = z
   .object({
     modelId: z.enum(canonicalModelIds),
     sessionId: z.string().optional(),
-    schemaName: z.enum(repairSchemaNames),
+    schemaName: z.enum(repairSchemaNames).optional(),
+    schemaDescriptor: callerRepairSchemaDescriptorInputSchema.optional(),
     input: z.unknown()
   })
   .strict();

@@ -27,7 +27,7 @@ type IssuePathSegment = string | number | symbol;
 export interface RepairToolInputResult {
   valid: boolean;
   repaired: boolean;
-  schemaName: RepairSchemaName;
+  schemaName: string;
   modelId: CanonicalModelId;
   data?: unknown;
   repairedInput?: unknown;
@@ -50,15 +50,24 @@ export function repairToolInput(
   options: RepairToolInputOptions = {}
 ): RepairToolInputResult {
   const spec = repairSchemaSpecs[schemaName];
+  return repairToolInputWithSpec(modelId, spec, input, options);
+}
+
+export function repairToolInputWithSpec(
+  modelId: CanonicalModelId,
+  spec: RepairSchemaSpec,
+  input: unknown,
+  options: RepairToolInputOptions = {}
+): RepairToolInputResult {
   const policy = loadModelPolicy(modelId);
   const firstValidation = spec.schema.safeParse(input);
-  const toolName = options.toolName ?? schemaName;
+  const toolName = options.toolName ?? spec.name;
 
   if (firstValidation.success) {
     return {
       valid: true,
       repaired: false,
-      schemaName,
+      schemaName: spec.name,
       modelId,
       data: firstValidation.data,
       notes: []
@@ -72,7 +81,7 @@ export function repairToolInput(
     modelId,
     toolName,
     metadata: {
-      schemaName,
+      schemaName: spec.name,
       issues: originalIssues.map(summarizeIssue)
     }
   });
@@ -104,7 +113,7 @@ export function repairToolInput(
     return {
       valid: false,
       repaired: notes.length > 0,
-      schemaName,
+      schemaName: spec.name,
       modelId,
       repairedInput: working,
       notes,
@@ -121,7 +130,7 @@ export function repairToolInput(
       modelId,
       toolName,
       metadata: {
-        schemaName,
+        schemaName: spec.name,
         repairs: notes.map((note) => note.code.replace(/^repair\./, "")),
         notes
       }
@@ -131,7 +140,7 @@ export function repairToolInput(
   return {
     valid: true,
     repaired: notes.length > 0,
-    schemaName,
+    schemaName: spec.name,
     modelId,
     data: repairedValidation.data,
     repairedInput: repairedValidation.data,

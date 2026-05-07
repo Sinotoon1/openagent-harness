@@ -76,7 +76,7 @@ export const repairSchemaNames = ["oss_chat", "readFile", "writeFile", "pathBatc
 export type RepairSchemaName = (typeof repairSchemaNames)[number];
 
 export interface RepairSchemaSpec {
-  name: RepairSchemaName;
+  name: string;
   schema: z.ZodType<unknown>;
   arrayFields: string[];
   optionalFields: string[];
