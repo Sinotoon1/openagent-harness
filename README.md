@@ -94,7 +94,7 @@ All major P0 architecture from the audit is implemented:
 - `record_eval_event`: records local harness notes/telemetry only, not full eval-platform or experiment-tracker state.
 - `query_telemetry`: queries configured local harness telemetry with bounded, redacted metadata.
 - `get_harness_stats`: summarizes recent sanitized harness health telemetry, not billing or SLA observability.
-- `suggest_repair_policy`: suggests repair policy order from repair telemetry without editing YAML.
+- `suggest_repair_policy`: suggests repair policy order and reviewable YAML patch previews from repair telemetry without editing YAML.
 
 Canonical model IDs used internally:
 
@@ -357,6 +357,23 @@ not full historical aggregation, and suggestion tools do not edit YAML policies.
 When JSONL telemetry is enabled, suggestions can read from the local JSONL file
 through the same bounded query path.
 
+`suggest_repair_policy` also returns `policySuggestions`, a reviewable policy
+patch suggestion section. Each suggestion includes current repairs when the
+model policy can be loaded, frequency-ordered suggested repairs, simple
+confidence, warnings, and a YAML preview for a human to review. The harness never
+auto-applies policy changes, never writes policy files, and does not add a policy
+apply tool. Humans must manually review and edit `src/policies/*.yaml`.
+
+Confidence is a small operational heuristic, not a statistical guarantee:
+
+- `low`: fewer than 10 repaired events for the model.
+- `medium`: 10-49 repaired events for the model.
+- `high`: 50 or more repaired events for the model.
+
+Warnings call out insufficient telemetry, unknown repair names, missing policies,
+already-aligned ordering, the bounded latest-window limitation, and whether
+telemetry may be memory or JSONL depending on configuration.
+
 ## Usage examples
 
 ### `oss_chat` non-streaming
@@ -465,6 +482,26 @@ window only.
 ```json
 {
   "modelId": "deepseek-v4-pro"
+}
+```
+
+Example response excerpt:
+
+```json
+{
+  "policySuggestions": [
+    {
+      "modelId": "deepseek-v4-pro",
+      "kind": "repair_order",
+      "status": "suggested",
+      "confidence": "low",
+      "window": { "type": "latest", "limit": 200, "eventCount": 4 },
+      "currentRepairs": ["parseJsonArrayString", "bareStringToArray"],
+      "suggestedRepairs": ["bareStringToArray", "parseJsonArrayString"],
+      "yamlPatchPreview": "# Suggestion only; review manually before editing YAML.\nrepairs:\n  - bareStringToArray\n  - parseJsonArrayString"
+    }
+  ],
+  "note": "No YAML policies were modified."
 }
 ```
 
@@ -603,10 +640,18 @@ In `.vscode/mcp.json`:
 
 ## Release hygiene
 
-This candidate is prepared for the `v1.0.0-candidate.11` prerelease line. Before
+This candidate is prepared for the `v1.0.0-candidate.12` prerelease line. Before
 publishing to npm, verify that `package.json`, `package-lock.json`, and the git
 tag use the same candidate version. Do not publish automatically from this
 repository; run `npm test` and `npm run build` before any manual publish.
+
+Candidate.12 release notes:
+
+- Extends `suggest_repair_policy` with reviewable `policySuggestions`.
+- Adds frequency-ordered repair suggestions, current policy order, confidence, warnings, and YAML patch previews.
+- Keeps the existing `suggestions` output for compatibility.
+- Documents confidence as a simple latest-window heuristic, not a statistical guarantee.
+- Keeps policy editing human-owned: no YAML files are written and no policy apply tool is added.
 
 Candidate.11 release notes:
 

@@ -1,3 +1,25 @@
+## oss-agent-harness-mcp v1.0.0-candidate.12
+
+This candidate release improves repair policy suggestions into reviewable policy patch suggestions.
+
+### Changed
+
+- `suggest_repair_policy` now returns a `policySuggestions` section alongside the existing `suggestions` output.
+- Reviewable suggestions include model ID, repair-order kind, confidence, bounded window, current repairs, suggested repairs, reason, warnings, and a YAML patch preview.
+- Suggestions are grouped by model and order known safe repairs by observed frequency in `tool_input_repaired` telemetry.
+- Unknown repair names are warned about and excluded from YAML previews.
+
+### Preserved
+
+- `suggest_repair_policy` keeps the same MCP tool name and keeps backward-compatible legacy suggestion fields.
+- Policy suggestions are review-only; YAML files are not written and no policy apply/write tool is added.
+- Repair behavior, provider routing, streaming behavior, telemetry sinks, JSONL behavior, security sanitization, session hashing, context compaction, provider config validation, policy loading, MCP tool names, and caller-provided schema descriptor behavior are unchanged.
+
+### Validation
+
+- `npm test`: 9 test files passed, 111 tests passed.
+- `npm run build`: passed.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.11
 
 This candidate release adds read-only MCP inspection for model policies.

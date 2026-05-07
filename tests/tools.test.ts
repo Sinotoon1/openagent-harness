@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ChatRouter } from "../src/router/chatRouter.js";
@@ -991,6 +992,7 @@ describe("MCP tools", () => {
         suggestedRepairOrder: string[];
         currentPolicyOrder: string[];
       }>;
+      policySuggestions: Array<{ modelId: string; kind: string }>;
       note: string;
     };
 
@@ -998,7 +1000,215 @@ describe("MCP tools", () => {
     expect(result.suggestions[0]?.modelId).toBe("deepseek-v4-pro");
     expect(result.suggestions[0]?.suggestedRepairOrder[0]).toBe("bareStringToArray");
     expect(result.suggestions[0]?.currentPolicyOrder).toContain("parseJsonArrayString");
+    expect(result.policySuggestions[0]).toMatchObject({
+      modelId: "deepseek-v4-pro",
+      kind: "repair_order"
+    });
     expect(result.note).toBe("No YAML policies were modified.");
+  });
+
+  it("builds reviewable repair policy suggestions grouped by model and ordered by frequency", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    recordRepairEvents(telemetry, "kimi-k2-6", ["parseJsonArrayString"], 3);
+    recordRepairEvents(telemetry, "kimi-k2-6", ["bareStringToArray"], 1);
+    recordRepairEvents(telemetry, "deepseek-v4-pro", ["stripNullOptional"], 2);
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult((await handlers.get("suggest_repair_policy")?.({}))!) as {
+      policySuggestions: Array<{
+        modelId: string;
+        confidence: string;
+        currentRepairs?: string[];
+        suggestedRepairs: string[];
+        window: { eventCount: number; limit: number; type: string };
+        yamlPatchPreview: string;
+      }>;
+    };
+    const kimi = result.policySuggestions.find((suggestion) => suggestion.modelId === "kimi-k2-6");
+    const deepseek = result.policySuggestions.find(
+      (suggestion) => suggestion.modelId === "deepseek-v4-pro"
+    );
+
+    expect(result.policySuggestions.map((suggestion) => suggestion.modelId).sort()).toEqual([
+      "deepseek-v4-pro",
+      "kimi-k2-6"
+    ]);
+    expect(kimi?.suggestedRepairs.slice(0, 2)).toEqual([
+      "parseJsonArrayString",
+      "bareStringToArray"
+    ]);
+    expect(kimi?.currentRepairs).toEqual([
+      "emptyObjectToArray",
+      "parseJsonArrayString",
+      "bareStringToArray",
+      "stripNullOptional"
+    ]);
+    expect(kimi?.window).toEqual({ type: "latest", limit: 200, eventCount: 4 });
+    expect(kimi?.confidence).toBe("low");
+    expect(kimi?.yamlPatchPreview).toContain("repairs:");
+    expect(deepseek?.suggestedRepairs[0]).toBe("stripNullOptional");
+  });
+
+  it("marks repair policy suggestions as already_aligned when they match current policy", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    recordRepairEvents(
+      telemetry,
+      "deepseek-v4-pro",
+      [
+        "parseJsonArrayString",
+        "bareStringToArray",
+        "stripNullOptional",
+        "markdownPathAutolinkUnwrap"
+      ],
+      1
+    );
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult(
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "deepseek-v4-pro" }))!
+    ) as {
+      policySuggestions: Array<{
+        status: string;
+        warnings: Array<{ code: string }>;
+        yamlPatchPreview: string;
+      }>;
+    };
+
+    expect(result.policySuggestions[0]?.status).toBe("already_aligned");
+    expect(result.policySuggestions[0]?.warnings).toContainEqual({
+      code: "suggested_order_unchanged",
+      message: "Suggested repair order already matches the current model policy."
+    });
+    expect(result.policySuggestions[0]?.yamlPatchPreview).toContain("No YAML change is suggested");
+  });
+
+  it("assigns low, medium, and high confidence by repaired event count", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    recordRepairEvents(telemetry, "low-confidence-model", ["bareStringToArray"], 9);
+    recordRepairEvents(telemetry, "medium-confidence-model", ["bareStringToArray"], 10);
+    recordRepairEvents(telemetry, "high-confidence-model", ["bareStringToArray"], 50);
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult((await handlers.get("suggest_repair_policy")?.({}))!) as {
+      policySuggestions: Array<{ modelId: string; confidence: string }>;
+    };
+
+    expect(confidenceFor(result.policySuggestions, "low-confidence-model")).toBe("low");
+    expect(confidenceFor(result.policySuggestions, "medium-confidence-model")).toBe("medium");
+    expect(confidenceFor(result.policySuggestions, "high-confidence-model")).toBe("high");
+  });
+
+  it("warns on unknown repair names and excludes them from yamlPatchPreview", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    recordRepairEvents(telemetry, "kimi-k2-6", ["bareStringToArray", "unknownRepairName"], 1);
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult(
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "kimi-k2-6" }))!
+    ) as {
+      policySuggestions: Array<{
+        warnings: Array<{ code: string }>;
+        yamlPatchPreview: string;
+      }>;
+    };
+
+    expect(result.policySuggestions[0]?.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "unknown_repair_names"
+        })
+      ])
+    );
+    expect(result.policySuggestions[0]?.yamlPatchPreview).toContain("bareStringToArray");
+    expect(result.policySuggestions[0]?.yamlPatchPreview).not.toContain("unknownRepairName");
+  });
+
+  it("warns when a model policy is missing without crashing", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    recordRepairEvents(telemetry, "missing-policy-model", ["bareStringToArray"], 1);
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult((await handlers.get("suggest_repair_policy")?.({}))!) as {
+      policySuggestions: Array<{
+        modelId: string;
+        status: string;
+        currentRepairs?: string[];
+        warnings: Array<{ code: string }>;
+      }>;
+    };
+    const missing = result.policySuggestions.find(
+      (suggestion) => suggestion.modelId === "missing-policy-model"
+    );
+
+    expect(missing?.status).toBe("policy_not_found");
+    expect(missing?.currentRepairs).toBeUndefined();
+    expect(missing?.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "current_policy_unavailable" }),
+        expect.objectContaining({ code: "model_policy_not_found" })
+      ])
+    );
+  });
+
+  it("returns yamlPatchPreview without writing policy files", async () => {
+    const policyPath = "src/policies/kimi-k2-6.yaml";
+    const before = readFileSync(policyPath, "utf8");
+    const telemetry = new InMemoryTelemetrySink();
+    recordRepairEvents(telemetry, "kimi-k2-6", ["bareStringToArray"], 2);
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = parseToolResult(
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "kimi-k2-6" }))!
+    ) as { policySuggestions: Array<{ yamlPatchPreview: string }> };
+    const after = readFileSync(policyPath, "utf8");
+
+    expect(result.policySuggestions[0]?.yamlPatchPreview).toContain(
+      "Suggestion only; review manually"
+    );
+    expect(result.policySuggestions[0]?.yamlPatchPreview).toContain("bareStringToArray");
+    expect(after).toBe(before);
+  });
+
+  it("does not leak raw sensitive telemetry into repair policy suggestions", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    telemetry.record({
+      type: "tool_input_repaired",
+      sessionId: "raw-suggest-session",
+      modelId: "kimi-k2-6",
+      toolName: "repair_tool_input",
+      metadata: {
+        repairs: ["bareStringToArray", "token=raw-repair-token"],
+        apiKey: "raw-api-key-value",
+        fileContent: "raw-file-content-value",
+        command: "deploy --token raw-command-token",
+        headers: {
+          authorization: "Bearer raw-authorization-value"
+        },
+        env: {
+          API_KEY: "raw-env-key"
+        },
+        stdout: "token=raw-stdout-token",
+        stderr: "password=raw-stderr-password",
+        messages: [{ role: "user", content: "raw prompt content" }]
+      }
+    });
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const response =
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "kimi-k2-6" }))?.content[0]
+        ?.text ?? "";
+
+    expect(response).toContain("policySuggestions");
+    expect(response).not.toContain("raw-suggest-session");
+    expect(response).not.toContain("raw-repair-token");
+    expect(response).not.toContain("raw-api-key-value");
+    expect(response).not.toContain("raw-file-content-value");
+    expect(response).not.toContain("raw-command-token");
+    expect(response).not.toContain("raw-authorization-value");
+    expect(response).not.toContain("raw-env-key");
+    expect(response).not.toContain("raw-stdout-token");
+    expect(response).not.toContain("raw-stderr-password");
+    expect(response).not.toContain("raw prompt content");
   });
 
   it("returns zero-count harness stats for empty telemetry", async () => {
@@ -1362,3 +1572,28 @@ describe("MCP tools", () => {
     expect(result.streaming.failuresBeforeFirstToken).toBe(0);
   });
 });
+
+function recordRepairEvents(
+  telemetry: InMemoryTelemetrySink,
+  modelId: string,
+  repairs: string[],
+  count: number
+): void {
+  for (let index = 0; index < count; index += 1) {
+    telemetry.record({
+      type: "tool_input_repaired",
+      modelId: modelId as never,
+      toolName: "repair_tool_input",
+      metadata: {
+        repairs
+      }
+    });
+  }
+}
+
+function confidenceFor(
+  suggestions: Array<{ modelId: string; confidence: string }>,
+  modelId: string
+): string | undefined {
+  return suggestions.find((suggestion) => suggestion.modelId === modelId)?.confidence;
+}

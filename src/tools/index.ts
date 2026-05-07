@@ -12,6 +12,7 @@ import {
 } from "../repair/schemaDescriptors.js";
 import { sanitizeForResponse } from "../security/sanitize.js";
 import { queryTelemetry } from "../telemetry/query.js";
+import { createReviewableRepairPolicySuggestions } from "../telemetry/repairPolicySuggestions.js";
 import { createRepairTelemetryReport } from "../telemetry/repairReport.js";
 import { getHarnessStats } from "../telemetry/stats.js";
 import type { TelemetrySink } from "../telemetry/types.js";
@@ -371,13 +372,12 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
         );
       }
 
-      const report = createRepairTelemetryReport(
-        queryTelemetry(deps.telemetry, {
-          type: "tool_input_repaired",
-          includeMetadata: true,
-          limit: 200
-        }).events
-      );
+      const telemetryWindow = queryTelemetry(deps.telemetry, {
+        type: "tool_input_repaired",
+        includeMetadata: true,
+        limit: 200
+      });
+      const report = createRepairTelemetryReport(telemetryWindow.events);
 
       const suggestions = Object.entries(report.models)
         .filter(([modelId]) => parsed.data.modelId === undefined || modelId === parsed.data.modelId)
@@ -388,9 +388,15 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
           currentPolicyOrder: tryLoadPolicyRepairOrder(modelId),
           suggestedRepairOrder: suggestion.suggestedRepairOrder
         }));
+      const policySuggestions = createReviewableRepairPolicySuggestions(telemetryWindow.events, {
+        modelId: parsed.data.modelId,
+        limit: 200,
+        currentRepairsForModel: tryLoadPolicyRepairOrder
+      });
 
       return asJsonText({
         suggestions,
+        policySuggestions,
         note: "No YAML policies were modified."
       });
     }

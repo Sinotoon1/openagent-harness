@@ -252,7 +252,14 @@ describe("telemetry sinks", () => {
       (await handlers.get("suggest_repair_policy")?.({
         modelId: "deepseek-v4-pro"
       }))!
-    ) as { suggestions: Array<{ modelId: string; suggestedRepairOrder: string[] }> };
+    ) as {
+      suggestions: Array<{ modelId: string; suggestedRepairOrder: string[] }>;
+      policySuggestions: Array<{
+        modelId: string;
+        suggestedRepairs: string[];
+        yamlPatchPreview: string;
+      }>;
+    };
 
     expect(queryResult.total).toBe(1);
     expect(queryResult.events[0]?.modelId).toBe("deepseek-v4-pro");
@@ -260,6 +267,9 @@ describe("telemetry sinks", () => {
     expect(statsResult.repairs.byRepair.bareStringToArray).toBe(1);
     expect(suggestionResult.suggestions[0]?.modelId).toBe("deepseek-v4-pro");
     expect(suggestionResult.suggestions[0]?.suggestedRepairOrder[0]).toBe("bareStringToArray");
+    expect(suggestionResult.policySuggestions[0]?.modelId).toBe("deepseek-v4-pro");
+    expect(suggestionResult.policySuggestions[0]?.suggestedRepairs[0]).toBe("bareStringToArray");
+    expect(suggestionResult.policySuggestions[0]?.yamlPatchPreview).toContain("Suggestion only");
   });
 
   it("does not write raw sessionId values to disk", () => {
