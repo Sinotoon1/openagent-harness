@@ -101,6 +101,78 @@ describe("MCP tools", () => {
       expect(responseText).not.toContain("chunks");
     });
 
+    it("returns reconstructed streaming tool calls without raw deltas by default", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          sseResponse([
+            sseData({
+              choices: [
+                {
+                  delta: {
+                    content: "checking ",
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_1",
+                        type: "function",
+                        function: { name: "lookup", arguments: "{\"q\":\"docs\"}" }
+                      }
+                    ]
+                  }
+                }
+              ],
+              provider_internal_trace: "stream-tool-raw-trace-123"
+            }),
+            sseData({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [{ index: 0, function: { arguments: "" } }]
+                  },
+                  finish_reason: "tool_calls"
+                }
+              ]
+            }),
+            "data: [DONE]\n\n"
+          ])
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["deepseekPrimary"],
+        streaming: { enabled: true }
+      });
+      const body = JSON.parse(responseText) as {
+        content: string;
+        finishReason: string;
+        toolCalls?: Array<{
+          id?: string;
+          type: string;
+          function: { name: string; arguments: string };
+        }>;
+        raw?: unknown;
+        rawProviderResponsePreview?: unknown;
+      };
+
+      expect(body.content).toBe("checking ");
+      expect(body.finishReason).toBe("tool_calls");
+      expect(body.toolCalls).toEqual([
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "lookup", arguments: "{\"q\":\"docs\"}" }
+        }
+      ]);
+      expect(body.raw).toBeUndefined();
+      expect(body.rawProviderResponsePreview).toBeUndefined();
+      expect(responseText).not.toContain("toolCallDeltas");
+      expect(responseText).not.toContain("stream-tool-raw-trace-123");
+    });
+
     it("returns only a sanitized bounded raw provider preview when explicitly requested", async () => {
       vi.stubGlobal(
         "fetch",
@@ -205,6 +277,73 @@ describe("MCP tools", () => {
       expect(responseText).not.toContain("raw-secret-shaped-value");
       expect(responseText).not.toContain("raw-tool-call-token");
       expect(responseText).not.toContain("too deep");
+    });
+
+    it("keeps streaming raw tool-call deltas only in sanitized bounded debug previews", async () => {
+      const longArgument = `{"auth":"Bearer raw-stream-tool-token-12345","payload":"${"x".repeat(300)}"}`;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          sseResponse([
+            sseData({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_1",
+                        type: "function",
+                        function: { name: "lookup", arguments: longArgument.slice(0, 140) }
+                      }
+                    ]
+                  }
+                }
+              ],
+              raw: { trace: "raw-stream-tool-delta-trace" }
+            }),
+            sseData({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      { index: 0, function: { arguments: longArgument.slice(140) } }
+                    ]
+                  }
+                }
+              ]
+            }),
+            "data: [DONE]\n\n"
+          ])
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["deepseekPrimary"],
+        streaming: { enabled: true },
+        includeRawProviderResponse: true
+      });
+      const body = JSON.parse(responseText) as {
+        toolCalls?: Array<{ function: { arguments: string } }>;
+        rawProviderResponsePreview?: {
+          chunks?: Array<{ raw?: string }>;
+          toolCallDeltas?: Array<Array<{ function?: { arguments?: string } }>>;
+        };
+      };
+
+      expect(body.toolCalls?.[0]?.function.arguments).toBe("<redacted>");
+      expect(body.rawProviderResponsePreview?.chunks?.[0]?.raw).toMatch(
+        /^<summarized:raw:/
+      );
+      expect(JSON.stringify(body.rawProviderResponsePreview?.toolCallDeltas)).toContain(
+        "<omitted:max-depth>"
+      );
+      expect(responseText).not.toContain("raw-stream-tool-token-12345");
+      expect(responseText).not.toContain("raw-stream-tool-delta-trace");
+      expect(responseText.length).toBeLessThan(8000);
     });
 
     it("summarizes raw provider data containers in explicit debug previews", async () => {

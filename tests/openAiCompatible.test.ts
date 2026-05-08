@@ -84,7 +84,7 @@ describe("OpenAICompatibleProviderAdapter", () => {
     });
   });
 
-  it("collects tool-call deltas as meaningful streaming output", async () => {
+  it("reconstructs a single tool call from one delta", async () => {
     const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     vi.stubGlobal(
       "fetch",
@@ -94,7 +94,14 @@ describe("OpenAICompatibleProviderAdapter", () => {
             choices: [
               {
                 delta: {
-                  tool_calls: [{ id: "call_1", function: { name: "lookup" } }]
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_1",
+                      type: "function",
+                      function: { name: "lookup", arguments: "{\"city\":\"Paris\"}" }
+                    }
+                  ]
                 }
               }
             ]
@@ -110,9 +117,277 @@ describe("OpenAICompatibleProviderAdapter", () => {
     });
 
     expect(result.content).toBe("");
+    expect(result.toolCalls).toEqual([
+      {
+        id: "call_1",
+        type: "function",
+        function: { name: "lookup", arguments: "{\"city\":\"Paris\"}" }
+      }
+    ]);
     expect(result.raw).toMatchObject({
-      toolCallDeltas: [[{ id: "call_1", function: { name: "lookup" } }]]
+      toolCallDeltas: [
+        [
+          {
+            index: 0,
+            id: "call_1",
+            type: "function",
+            function: { name: "lookup", arguments: "{\"city\":\"Paris\"}" }
+          }
+        ]
+      ]
     });
+  });
+
+  it("reconstructs tool-call arguments split across multiple deltas", async () => {
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_1",
+                      type: "function",
+                      function: { name: "lookup", arguments: "{\"city\":" }
+                    }
+                  ]
+                }
+              }
+            ]
+          }),
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [{ index: 0, function: { arguments: "\"Paris\"}" } }]
+                }
+              }
+            ]
+          }),
+          "data: [DONE]\n\n"
+        ])
+      )
+    );
+
+    const result = await provider.completeChat({
+      ...chatRequest,
+      streaming: { enabled: true }
+    });
+
+    expect(result.toolCalls).toEqual([
+      {
+        id: "call_1",
+        type: "function",
+        function: { name: "lookup", arguments: "{\"city\":\"Paris\"}" }
+      }
+    ]);
+  });
+
+  it("reconstructs a function name split across multiple deltas", async () => {
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_1",
+                      type: "function",
+                      function: { name: "look" }
+                    }
+                  ]
+                }
+              }
+            ]
+          }),
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    { index: 0, function: { name: "up", arguments: "{\"q\":\"x\"}" } }
+                  ]
+                }
+              }
+            ]
+          }),
+          "data: [DONE]\n\n"
+        ])
+      )
+    );
+
+    const result = await provider.completeChat({
+      ...chatRequest,
+      streaming: { enabled: true }
+    });
+
+    expect(result.toolCalls?.[0]?.function).toEqual({
+      name: "lookup",
+      arguments: "{\"q\":\"x\"}"
+    });
+  });
+
+  it("reconstructs multiple interleaved tool calls by index", async () => {
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 1,
+                      id: "call_b",
+                      type: "function",
+                      function: { name: "write", arguments: "{\"path\":" }
+                    },
+                    {
+                      index: 0,
+                      id: "call_a",
+                      type: "function",
+                      function: { name: "read", arguments: "{\"path\":" }
+                    }
+                  ]
+                }
+              }
+            ]
+          }),
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    { index: 0, function: { arguments: "\"a.ts\"}" } },
+                    { index: 1, function: { arguments: "\"b.ts\"}" } }
+                  ]
+                }
+              }
+            ]
+          }),
+          "data: [DONE]\n\n"
+        ])
+      )
+    );
+
+    const result = await provider.completeChat({
+      ...chatRequest,
+      streaming: { enabled: true }
+    });
+
+    expect(result.toolCalls).toEqual([
+      {
+        id: "call_a",
+        type: "function",
+        function: { name: "read", arguments: "{\"path\":\"a.ts\"}" }
+      },
+      {
+        id: "call_b",
+        type: "function",
+        function: { name: "write", arguments: "{\"path\":\"b.ts\"}" }
+      }
+    ]);
+  });
+
+  it("preserves content mixed with tool-call deltas", async () => {
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          sseData({ choices: [{ delta: { content: "I will " } }] }),
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_1",
+                      type: "function",
+                      function: { name: "lookup", arguments: "{\"q\":\"docs\"}" }
+                    }
+                  ]
+                }
+              }
+            ]
+          }),
+          sseData({ choices: [{ delta: { content: "check." } }] }),
+          "data: [DONE]\n\n"
+        ])
+      )
+    );
+
+    const result = await provider.completeChat({
+      ...chatRequest,
+      streaming: { enabled: true }
+    });
+
+    expect(result.content).toBe("I will check.");
+    expect(result.toolCalls).toEqual([
+      {
+        id: "call_1",
+        type: "function",
+        function: { name: "lookup", arguments: "{\"q\":\"docs\"}" }
+      }
+    ]);
+  });
+
+  it("does not crash on empty, malformed, or partial tool-call deltas", async () => {
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          sseData({ choices: [{ delta: { tool_calls: [] } }] }),
+          sseData({ choices: [{ delta: { tool_calls: [null, "bad"] } }] }),
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [{ index: 0, id: "call_partial" }]
+                }
+              }
+            ]
+          }),
+          sseData({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [{ index: 0, function: { arguments: "{\"partial\":true}" } }]
+                }
+              }
+            ]
+          }),
+          "data: [DONE]\n\n"
+        ])
+      )
+    );
+
+    const result = await provider.completeChat({
+      ...chatRequest,
+      streaming: { enabled: true }
+    });
+
+    expect(result.toolCalls).toEqual([
+      {
+        id: "call_partial",
+        type: "function",
+        function: { name: "", arguments: "{\"partial\":true}" }
+      }
+    ]);
   });
 
   it("returns collected content when stream EOF arrives without [DONE]", async () => {
@@ -258,6 +533,51 @@ describe("streaming fallback semantics", () => {
       retryable: true,
       fallbackPhase: "after_first_token",
       partialContent: "partial"
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fallback when provider stream fails after a tool-call delta", async () => {
+    const deepseekPrimary = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    const openrouterFallback = createProvider("openrouterFallback", "https://openrouter-fallback.example/v1");
+    const fetchMock = vi.fn(async () =>
+      sseResponse([
+        sseData({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_1",
+                    type: "function",
+                    function: { name: "lookup", arguments: "{\"q\":\"docs\"}" }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        "data: {not-json}\n\n"
+      ])
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = new ChatRouter(
+      [deepseekPrimary, openrouterFallback],
+      new InMemoryTelemetrySink()
+    );
+
+    await expect(
+      router.route({
+        ...chatRequest,
+        providerPriority: ["deepseekPrimary", "openrouterFallback"],
+        streaming: { enabled: true }
+      })
+    ).rejects.toMatchObject({
+      retryable: true,
+      fallbackPhase: "after_first_token",
+      partialContent: ""
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

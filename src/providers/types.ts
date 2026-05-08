@@ -3,7 +3,8 @@ import type {
   CapabilityFlags,
   ChatMessage,
   FallbackPhase,
-  ProviderId
+  ProviderId,
+  ToolCall
 } from "../types.js";
 
 export interface ProviderChatRequest {
@@ -22,6 +23,7 @@ export interface ProviderChatRequest {
 
 export interface ProviderChatResponse {
   content: string;
+  toolCalls?: ToolCall[];
   usage?: unknown;
   finishReason?: string;
   raw?: unknown;

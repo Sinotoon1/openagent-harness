@@ -32,6 +32,15 @@ export interface ChatMessage {
   createdAt?: string;
 }
 
+export interface ToolCall {
+  id?: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface OssChatInput {
   modelId: CanonicalModelId;
   sessionId: string;
@@ -51,6 +60,7 @@ export interface OssChatOutput {
   modelId: CanonicalModelId;
   providerId: ProviderId;
   content: string;
+  toolCalls?: ToolCall[];
   usage?: unknown;
   finishReason?: string;
   capabilities: CapabilityFlags;

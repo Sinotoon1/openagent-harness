@@ -2,7 +2,8 @@ import type {
   CanonicalModelId,
   CapabilityFlags,
   FallbackPhase,
-  ProviderId
+  ProviderId,
+  ToolCall
 } from "../types.js";
 import { capabilityName } from "../constants/capabilities.js";
 import { fallbackPhase as fallbackPhaseName } from "../constants/fallback.js";
@@ -37,6 +38,14 @@ interface OpenAIChatCompletionChunk {
       tool_calls?: unknown;
     };
   }>;
+}
+
+interface ToolCallAccumulator {
+  index: number;
+  id?: string;
+  nameParts: string[];
+  argumentParts: string[];
+  hasData: boolean;
 }
 
 export interface OpenAICompatibleProviderConfig {
@@ -179,6 +188,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     const decoder = new TextDecoder();
     const contentDeltas: string[] = [];
     const toolCallDeltas: unknown[] = [];
+    const toolCallReconstructor = new ToolCallReconstructor();
     const chunks: OpenAIChatCompletionChunk[] = [];
     let finishReason: string | undefined;
     let buffer = "";
@@ -200,6 +210,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
             this.processSseLine(line, {
               contentDeltas,
               toolCallDeltas,
+              toolCallReconstructor,
               chunks,
               setFinishReason: (value) => {
                 finishReason = value;
@@ -218,6 +229,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
             this.processSseLine(line, {
               contentDeltas,
               toolCallDeltas,
+              toolCallReconstructor,
               chunks,
               setFinishReason: (value) => {
                 finishReason = value;
@@ -236,6 +248,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
 
     return {
       content: contentDeltas.join(""),
+      toolCalls: toolCallReconstructor.toToolCalls(),
       finishReason,
       raw: {
         chunks,
@@ -250,6 +263,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     output: {
       contentDeltas: string[];
       toolCallDeltas: unknown[];
+      toolCallReconstructor: ToolCallReconstructor;
       chunks: OpenAIChatCompletionChunk[];
       setFinishReason: (value: string) => void;
     }
@@ -286,6 +300,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     output: {
       contentDeltas: string[];
       toolCallDeltas: unknown[];
+      toolCallReconstructor: ToolCallReconstructor;
     }
   ): boolean {
     let meaningful = false;
@@ -300,6 +315,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
       const toolCalls = choice.delta?.tool_calls ?? choice.message?.tool_calls;
       if (toolCalls !== undefined) {
         output.toolCallDeltas.push(toolCalls);
+        output.toolCallReconstructor.collect(toolCalls);
         meaningful = true;
       }
     }
@@ -359,4 +375,97 @@ function finishReasonFromChoices(
   const finishReason = choices?.find((choice) => typeof choice.finish_reason === "string")
     ?.finish_reason;
   return finishReason ?? undefined;
+}
+
+class ToolCallReconstructor {
+  private readonly calls = new Map<number, ToolCallAccumulator>();
+
+  collect(toolCalls: unknown): void {
+    if (!Array.isArray(toolCalls)) {
+      return;
+    }
+
+    for (const [position, delta] of toolCalls.entries()) {
+      if (!isPlainRecord(delta)) {
+        continue;
+      }
+
+      const index = stableToolCallIndex(delta.index, position);
+      const call = this.getOrCreate(index);
+
+      if (typeof delta.id === "string" && delta.id.length > 0) {
+        call.id = delta.id;
+        call.hasData = true;
+      }
+
+      if (typeof delta.type === "string" && delta.type.length > 0) {
+        call.hasData = true;
+      }
+
+      const functionDelta = delta.function;
+      if (!isPlainRecord(functionDelta)) {
+        continue;
+      }
+
+      if (typeof functionDelta.name === "string" && functionDelta.name.length > 0) {
+        call.nameParts.push(functionDelta.name);
+        call.hasData = true;
+      }
+
+      if (
+        typeof functionDelta.arguments === "string" &&
+        functionDelta.arguments.length > 0
+      ) {
+        call.argumentParts.push(functionDelta.arguments);
+        call.hasData = true;
+      }
+    }
+  }
+
+  toToolCalls(): ToolCall[] | undefined {
+    const toolCalls = [...this.calls.values()]
+      .filter((call) => call.hasData)
+      .sort((left, right) => left.index - right.index)
+      .map((call) => ({
+        ...(call.id !== undefined ? { id: call.id } : {}),
+        type: "function" as const,
+        function: {
+          name: call.nameParts.join(""),
+          arguments: call.argumentParts.join("")
+        }
+      }));
+
+    return toolCalls.length > 0 ? toolCalls : undefined;
+  }
+
+  private getOrCreate(index: number): ToolCallAccumulator {
+    const existing = this.calls.get(index);
+    if (existing) {
+      return existing;
+    }
+
+    const created: ToolCallAccumulator = {
+      index,
+      nameParts: [],
+      argumentParts: [],
+      hasData: false
+    };
+    this.calls.set(index, created);
+    return created;
+  }
+}
+
+function stableToolCallIndex(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : fallback;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
 }

@@ -5,7 +5,7 @@ import { telemetryEvent } from "../constants/telemetryEvents.js";
 import { loadModelPolicy } from "../policies/loader.js";
 import { sanitizeForResponse, sanitizeProviderPreview } from "../security/sanitize.js";
 import type { TelemetrySink } from "../telemetry/types.js";
-import type { OssChatInput, OssChatOutput, ProviderId } from "../types.js";
+import type { OssChatInput, OssChatOutput, ProviderId, ToolCall } from "../types.js";
 import { providerIds } from "../types.js";
 import { CacheWarmthTracker } from "./cache.js";
 import {
@@ -84,6 +84,7 @@ export class ChatRouter {
           modelId: input.modelId,
           providerId: provider.id,
           content: response.content,
+          toolCalls: previewToolCalls(response.toolCalls),
           usage: previewUsage(response.usage),
           finishReason: response.finishReason,
           capabilities,
@@ -153,6 +154,27 @@ function previewRawProviderResponse(raw: unknown): unknown {
     maxObjectKeys: 20,
     maxStringLength: 160
   });
+}
+
+function previewToolCalls(toolCalls: ToolCall[] | undefined): ToolCall[] | undefined {
+  if (!toolCalls?.length) {
+    return undefined;
+  }
+
+  return toolCalls.slice(0, 20).map((toolCall) => ({
+    ...(toolCall.id !== undefined
+      ? { id: sanitizeToolCallString(toolCall.id, 160) }
+      : {}),
+    type: "function",
+    function: {
+      name: sanitizeToolCallString(toolCall.function.name, 256),
+      arguments: sanitizeToolCallString(toolCall.function.arguments, 4000)
+    }
+  }));
+}
+
+function sanitizeToolCallString(value: string, maxStringLength: number): string {
+  return sanitizeForResponse(value, { maxStringLength }) as string;
 }
 
 function previewUsage(usage: unknown): unknown {

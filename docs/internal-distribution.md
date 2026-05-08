@@ -26,7 +26,7 @@ The `.tgz` does not include `node_modules`. Internal users should install runtim
 dependencies inside the unpacked package directory before running the server.
 
 ```bash
-tar -xzf oss-agent-harness-mcp-1.0.0-candidate.25.tgz
+tar -xzf oss-agent-harness-mcp-1.0.0-candidate.26.tgz
 cd package
 npm install --omit=dev
 node dist/server.js

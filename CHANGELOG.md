@@ -1,3 +1,50 @@
+## oss-agent-harness-mcp v1.0.0-candidate.26
+
+This candidate release reconstructs OpenAI-compatible streaming tool-call
+deltas into high-level `toolCalls` while preserving the harness responsibility
+boundary.
+
+### Added
+
+- Reconstructed streaming `delta.tool_calls[]` chunks into stable `toolCalls`
+  with `id`, `type: "function"`, function `name`, and function `arguments`.
+- Supported IDs arriving in one chunk, function names and arguments arriving
+  across multiple chunks, multiple interleaved calls keyed by
+  `tool_calls[].index`, content mixed with tool-call deltas, and partial or
+  malformed tool-call delta entries.
+- Added bounded response shaping for reconstructed tool-call argument strings.
+- Added regression coverage for reconstruction, mixed content, malformed/partial
+  deltas, tool-call-delta fallback boundaries, default raw-delta hiding, and
+  opt-in sanitized raw preview behavior.
+
+### Changed
+
+- Successful `oss_chat` responses include reconstructed `toolCalls` when
+  streaming tool-call deltas are present.
+- Updated package metadata and MCP server advertised version to
+  `1.0.0-candidate.26`.
+
+### Preserved
+
+- The harness reconstructs tool calls only; it does not execute tools, plan tool
+  use, call MCP tools from reconstructed calls, or add an agent loop.
+- Raw provider payloads and raw tool-call deltas are still hidden by default.
+  They remain visible only through the existing opt-in sanitized and bounded
+  `rawProviderResponsePreview` path.
+- MCP tool names, provider routing semantics, fallback semantics, telemetry sink
+  behavior, JSONL behavior, repair behavior, security sanitization semantics,
+  context compaction behavior, schema descriptor behavior, policy behavior,
+  provider config loading, package inclusion behavior, and provider request
+  behavior are unchanged except for streaming tool-call delta reconstruction.
+- After content or tool-call deltas begin, streaming fallback still is not
+  automatic.
+
+### Validation
+
+- `npm test`: 16 test files passed, 179 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 154 files, 91.9 kB package, 437.8 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.25
 
 This candidate release is an operational hardening bundle for local source and

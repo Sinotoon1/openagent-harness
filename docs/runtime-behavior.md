@@ -101,6 +101,13 @@ Retryable provider failures may fallback only before first meaningful assistant
 output. After content deltas or tool-call deltas begin, the router does not
 automatically switch providers.
 
+OpenAI-compatible streaming tool-call deltas are reconstructed into stable
+high-level `toolCalls` after the stream completes. The adapter handles IDs,
+function names, and function arguments arriving across separate chunks,
+including multiple interleaved calls keyed by `tool_calls[].index`. The harness
+only reconstructs the model's requested tool calls; it does not execute tools,
+plan tool use, call MCP tools from reconstructed calls, or add an agent loop.
+
 MCP-visible provider errors are sanitized diagnostics only. HTTP failures report
 safe fields such as provider ID, status, fallback phase, and retryability; raw
 provider response bodies are not included in tool responses or fallback
@@ -109,8 +116,10 @@ telemetry.
 Successful `oss_chat` responses are shaped by default. They return the collected
 model text plus safe metadata such as model ID, provider ID, negotiated
 capabilities, dropped capabilities, fallback attempts, usage, and finish reason
-when available. They do not include the full raw provider payload unless the
-caller explicitly sets `includeRawProviderResponse: true`.
+when available. When present, reconstructed `toolCalls` are included with
+bounded, response-sanitized argument strings. Responses do not include the full
+raw provider payload or raw tool-call deltas unless the caller explicitly sets
+`includeRawProviderResponse: true`.
 
 When raw provider visibility is requested, the response includes
 `rawProviderResponsePreview` rather than an unbounded raw payload. The preview is
@@ -123,7 +132,7 @@ summarized or redacted. Provider raw/debug containers named `raw`, `data`,
 Remaining candidate caveats:
 
 - MCP tool responses return collected final text after the provider stream completes rather than incremental MCP streaming.
-- Tool-call deltas are collected as raw provider deltas inside the opt-in sanitized `rawProviderResponsePreview`; they are not reconstructed into high-level tool calls yet.
+- Raw tool-call deltas are available only through the opt-in sanitized and bounded `rawProviderResponsePreview`.
 - OpenAI-style single-line `data:` JSON chunks are supported; SSE spec-style multi-line `data:` JSON events are not yet supported.
 
 Capability negotiation is per-attempt. Each provider attempt gets the strongest

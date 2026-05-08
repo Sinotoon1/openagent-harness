@@ -89,8 +89,10 @@ Call `oss_chat` with streaming enabled:
 ```
 
 Expected result: the provider request uses SSE streaming, while the MCP response
-returns the final collected text after the provider stream completes. Tool-call
-deltas remain raw deltas inside the opt-in sanitized raw provider preview.
+returns the final collected text after the provider stream completes. If the
+stream contains OpenAI-compatible tool-call deltas, the response includes
+reconstructed `toolCalls`; raw deltas remain hidden by default and are available
+only inside the opt-in sanitized raw provider preview.
 
 ### Session Pin Header
 

@@ -124,6 +124,10 @@ output and safe routing metadata, but not the full raw provider payload. Set
 `rawProviderResponsePreview` uses stricter provider-preview sanitization and is
 bounded, not an unbounded provider response dump. Raw/debug containers such as
 `raw`, `data`, `response`, and `debug` are summarized rather than returned.
+When OpenAI-compatible streaming responses contain tool-call deltas, the harness
+reconstructs them into high-level `toolCalls` in the final response. It does not
+execute tools, plan tool execution, or run an agent loop, and raw provider deltas
+are not returned by default.
 
 ### `repair_tool_input`
 
