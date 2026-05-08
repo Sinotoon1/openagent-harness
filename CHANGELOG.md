@@ -1,3 +1,55 @@
+## oss-agent-harness-mcp v1.0.0-candidate.25
+
+This candidate release is an operational hardening bundle for local source and
+`.tgz` users.
+
+### Added
+
+- Added opt-in safe telemetry diagnostics for `query_telemetry` and
+  `get_harness_stats`, including JSONL file existence, basename, size, line
+  counts, malformed/skipped counts, bounded-window limit, full-file-read caveat,
+  and warnings without exposing raw telemetry line contents.
+- Added minimal memory telemetry diagnostics for callers that request telemetry
+  diagnostics.
+- Added internal `.tgz` distribution guidance explaining that tarballs do not
+  include `node_modules`, and that internal users should run
+  `npm install --omit=dev` inside the unpacked `package/` before
+  `node dist/server.js`.
+- Added tests for JSONL diagnostics, diagnostics sanitization, memory diagnostics,
+  MCP diagnostics exposure, provider config replacement semantics, local example
+  hygiene, and local artifact ignore rules.
+
+### Changed
+
+- Clarified local provider config documentation for
+  `OSS_HARNESS_PROVIDER_CONFIG_PATH`, full replacement semantics, no deep merge,
+  environment-only API keys, and ignored local config files.
+- Linked internal distribution guidance from the README.
+- Updated the production-ready checklist to keep JSONL caveats, internal tarball
+  verification, and license choice as production-ready v1 checklist items.
+- Updated package metadata and MCP server advertised version to
+  `1.0.0-candidate.25`.
+
+### Preserved
+
+- Repair behavior, provider routing semantics, fallback semantics, streaming
+  parser behavior, MCP tool names, schema descriptor behavior, policy YAML
+  semantics, capability negotiation semantics, context compaction behavior, and
+  provider request behavior are unchanged.
+- JSONL malformed lines are still skipped safely.
+- No telemetry raw line contents, raw session IDs, secrets, env values, file
+  contents, headers, commands, stdout, stderr, or messages are exposed in
+  diagnostics.
+- No rotation, locking, managed observability, live provider/account/credential
+  validation, dashboard, billing, SLA analytics, deployment automation, or
+  policy auto-apply behavior was added.
+
+### Validation
+
+- `npm test`: 16 test files passed, 171 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 154 files, 89.6 kB package, 427.4 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.24
 
 This candidate release is a maintainability-only policy diagnostic helper

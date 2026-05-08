@@ -372,6 +372,174 @@ describe("telemetry sinks", () => {
     expect(responseText).not.toContain("raw-existing-session");
     expect(responseText).not.toContain("raw-existing-api-key");
   });
+
+  it("reports safe JSONL diagnostics without exposing malformed line content", () => {
+    const filePath = tempTelemetryPath();
+    const malformedLine = "{not-json raw-malformed-secret";
+    writeFileSync(
+      filePath,
+      [
+        malformedLine,
+        "",
+        JSON.stringify({
+          type: "not_a_real_event",
+          timestamp: new Date().toISOString(),
+          metadata: {
+            apiKey: "raw-invalid-event-secret"
+          }
+        }),
+        JSON.stringify({
+          type: "eval_event_recorded",
+          timestamp: new Date().toISOString(),
+          sessionId: "raw-diagnostic-session",
+          metadata: {
+            apiKey: "raw-diagnostic-api-key"
+          }
+        })
+      ].join("\n"),
+      "utf8"
+    );
+    const sink = new JsonlTelemetrySink(filePath);
+
+    const result = queryTelemetry(sink, {
+      includeMetadata: true,
+      includeDiagnostics: true,
+      limit: 10
+    });
+    const responseText = JSON.stringify(result);
+
+    expect(result.total).toBe(1);
+    expect(result.diagnostics).toMatchObject({
+      sinkType: "jsonl",
+      filePath: "telemetry.jsonl",
+      fileExists: true,
+      fileSizeBytes: readFileSync(filePath, "utf8").length,
+      totalLines: 4,
+      parsedLines: 1,
+      malformedLineCount: 1,
+      skippedLineCount: 3,
+      returnedWindowLimit: 10,
+      fullFileRead: true,
+      warnings: []
+    });
+    expect(result.events[0]?.metadata?.apiKey).toBe("<redacted>");
+    expect(responseText).not.toContain(malformedLine);
+    expect(responseText).not.toContain("raw-malformed-secret");
+    expect(responseText).not.toContain("raw-invalid-event-secret");
+    expect(responseText).not.toContain("raw-diagnostic-session");
+    expect(responseText).not.toContain("raw-diagnostic-api-key");
+  });
+
+  it("reports missing JSONL file diagnostics safely", () => {
+    const filePath = tempTelemetryPath();
+    const sink = new JsonlTelemetrySink(filePath);
+    rmSync(filePath, { force: true });
+
+    const result = queryTelemetry(sink, {
+      includeDiagnostics: true,
+      limit: 5
+    });
+
+    expect(result).toMatchObject({
+      total: 0,
+      returned: 0,
+      events: [],
+      diagnostics: {
+        sinkType: "jsonl",
+        filePath: "telemetry.jsonl",
+        fileExists: false,
+        fileSizeBytes: 0,
+        totalLines: 0,
+        parsedLines: 0,
+        malformedLineCount: 0,
+        skippedLineCount: 0,
+        returnedWindowLimit: 5,
+        fullFileRead: true,
+        warnings: []
+      }
+    });
+  });
+
+  it("reports safe minimal diagnostics for memory telemetry", () => {
+    const sink = new MemoryTelemetrySink();
+    sink.record({
+      type: "eval_event_recorded",
+      sessionId: "memory-diagnostic-session",
+      modelId: "kimi-k2-6"
+    });
+
+    const result = queryTelemetry(sink, {
+      includeDiagnostics: true,
+      limit: 25
+    });
+    const responseText = JSON.stringify(result);
+
+    expect(result.diagnostics).toEqual({
+      sinkType: "memory",
+      returnedWindowLimit: 25,
+      fullFileRead: false,
+      warnings: []
+    });
+    expect(responseText).not.toContain("memory-diagnostic-session");
+  });
+
+  it("exposes JSONL diagnostics through query_telemetry and get_harness_stats when requested", async () => {
+    const filePath = tempTelemetryPath();
+    const sink = new JsonlTelemetrySink(filePath);
+    sink.record({
+      type: "tool_input_repaired",
+      sessionId: "jsonl-diagnostics-tool-session",
+      modelId: "deepseek-v4-pro",
+      toolName: "repair_tool_input",
+      metadata: {
+        repairs: ["bareStringToArray"]
+      }
+    });
+    const handlers = registerTelemetryTools(sink);
+
+    const queryResult = parseToolResult(
+      (await handlers.get("query_telemetry")?.({
+        sessionId: "jsonl-diagnostics-tool-session",
+        includeDiagnostics: true,
+        includeMetadata: true
+      }))!
+    ) as {
+      diagnostics: {
+        sinkType: string;
+        filePath: string;
+        totalLines: number;
+        parsedLines: number;
+        malformedLineCount: number;
+      };
+    };
+    const statsResult = parseToolResult(
+      (await handlers.get("get_harness_stats")?.({
+        sessionId: "jsonl-diagnostics-tool-session",
+        includeDiagnostics: true
+      }))!
+    ) as {
+      telemetryDiagnostics: {
+        sinkType: string;
+        filePath: string;
+        totalLines: number;
+        parsedLines: number;
+      };
+    };
+
+    expect(queryResult.diagnostics).toMatchObject({
+      sinkType: "jsonl",
+      filePath: "telemetry.jsonl",
+      totalLines: 1,
+      parsedLines: 1,
+      malformedLineCount: 0
+    });
+    expect(statsResult.telemetryDiagnostics).toMatchObject({
+      sinkType: "jsonl",
+      filePath: "telemetry.jsonl",
+      totalLines: 1,
+      parsedLines: 1
+    });
+  });
 });
 
 function tempTelemetryPath(): string {

@@ -24,7 +24,17 @@ export class MemoryTelemetrySink implements TelemetryReadable {
     const matched = filterTelemetryEvents(this.events, filter);
     return {
       total: matched.length,
-      events: filter.limit === undefined ? matched : matched.slice(-filter.limit)
+      events: filter.limit === undefined ? matched : matched.slice(-filter.limit),
+      ...(filter.includeDiagnostics
+        ? {
+            diagnostics: {
+              sinkType: "memory" as const,
+              returnedWindowLimit: filter.limit,
+              fullFileRead: false,
+              warnings: []
+            }
+          }
+        : {})
     };
   }
 }

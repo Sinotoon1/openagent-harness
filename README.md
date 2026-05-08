@@ -101,6 +101,8 @@ smoke findings are documented in
 [docs/provider-smoke-results.md](docs/provider-smoke-results.md), and internal
 MCP usefulness checks are in
 [docs/mcp-effectiveness-smoke-tests.md](docs/mcp-effectiveness-smoke-tests.md).
+Internal `.tgz` distribution guidance is in
+[docs/internal-distribution.md](docs/internal-distribution.md).
 
 ## Usage Examples
 
@@ -194,5 +196,9 @@ npm test
 npm run build
 npm pack --dry-run
 ```
+
+The package tarball does not include `node_modules`. When testing an unpacked
+tarball locally, run `npm install --omit=dev` inside the unpacked `package/`
+directory, then start it with `node dist/server.js`.
 
 See [CHANGELOG.md](CHANGELOG.md) for candidate release history.

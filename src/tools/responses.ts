@@ -22,9 +22,9 @@ export const expectedShapes = {
   [mcpToolName.recordEvalEvent]:
     "{ eventName: string; sessionId?: string; modelId?: canonicalModelId; outcome?: pass | fail | skip | error; score?: number; metadata?: object }",
   [mcpToolName.queryTelemetry]:
-    "{ type?: telemetryEventType; modelId?: canonicalModelId; providerId?: ProviderId; toolName?: string; sessionId?: string; limit?: 1..200; includeMetadata?: boolean }",
+    "{ type?: telemetryEventType; modelId?: canonicalModelId; providerId?: ProviderId; toolName?: string; sessionId?: string; limit?: 1..200; includeMetadata?: boolean; includeDiagnostics?: boolean }",
   [mcpToolName.getHarnessStats]:
-    "{ modelId?: canonicalModelId; sessionId?: string; eventType?: string; limit?: 1..200; includeProviders?: boolean }",
+    "{ modelId?: canonicalModelId; sessionId?: string; eventType?: string; limit?: 1..200; includeProviders?: boolean; includeDiagnostics?: boolean }",
   [mcpToolName.suggestRepairPolicy]: "{ modelId?: canonicalModelId }"
 } as const;
 

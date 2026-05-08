@@ -28,11 +28,27 @@ export interface TelemetryFilter {
   toolName?: string;
   sessionIdHash?: string;
   limit?: number;
+  includeDiagnostics?: boolean;
+}
+
+export interface TelemetryDiagnostics {
+  sinkType: "memory" | "jsonl";
+  filePath?: string;
+  fileExists?: boolean;
+  fileSizeBytes?: number;
+  totalLines?: number;
+  parsedLines?: number;
+  malformedLineCount?: number;
+  skippedLineCount?: number;
+  returnedWindowLimit?: number;
+  fullFileRead?: boolean;
+  warnings: string[];
 }
 
 export interface TelemetryQueryWindow {
   total: number;
   events: TelemetryEvent[];
+  diagnostics?: TelemetryDiagnostics;
 }
 
 export interface TelemetrySink {

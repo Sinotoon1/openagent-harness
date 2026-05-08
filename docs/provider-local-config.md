@@ -9,10 +9,16 @@ By default, the bundled `src/providers/providers.yaml` is used in development an
 `dist/providers/providers.yaml` is used after build. Set
 `OSS_HARNESS_PROVIDER_CONFIG_PATH` to load a user-editable YAML file instead. The
 external file replaces the bundled provider config; this candidate does not deep
-merge external and bundled provider entries.
+merge external and bundled provider entries. If the external file omits a model
+slug mapping that exists in the bundled config, that bundled mapping is not used.
+The external file is the complete provider config for that run.
 
 Do not edit `dist/providers/providers.yaml` directly. It is build output and can
 be overwritten by `npm run build`.
+
+Keep local config files out of git. The repository `.gitignore` excludes
+`providers.local.yaml`, `.env`, and `.env.local`; keep any real local copies at
+those ignored paths or outside the repository.
 
 ## Security Boundary
 
@@ -27,6 +33,10 @@ Never commit real API keys, bearer tokens, or provider account credentials. The
 harness does not read API key values from YAML, does not print env values, and
 does not perform live provider credential checks.
 
+API keys stay in environment variables only. Provider YAML should contain only
+the names of those variables, for example `DEEPSEEK_PRIMARY_API_KEY`, never the
+secret values they point to.
+
 ## Example Files
 
 - [examples/providers.local.example.yaml](../examples/providers.local.example.yaml)
@@ -34,6 +44,9 @@ does not perform live provider credential checks.
 
 Copy the example provider YAML to a local ignored path, then point
 `OSS_HARNESS_PROVIDER_CONFIG_PATH` at that copy.
+
+The example files are placeholders. Replace placeholder values only in your
+ignored local copies, not in the committed examples.
 
 ## PowerShell
 

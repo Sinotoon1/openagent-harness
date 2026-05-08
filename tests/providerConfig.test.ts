@@ -115,6 +115,40 @@ describe("provider configuration validation", () => {
     );
   });
 
+  it("fully replaces bundled provider config instead of deep-merging it", () => {
+    const { dir, path } = withProviderConfigFile(`
+providers:
+  - id: deepseekPrimary
+    baseUrlEnv: DEEPSEEK_PRIMARY_BASE_URL
+    authEnvVar: DEEPSEEK_PRIMARY_API_KEY
+    stickySession:
+      header: X-External-Session-Id
+      strategy: raw
+    modelSlugs: {}
+  - id: openrouterFallback
+    baseUrlEnv: OPENROUTER_FALLBACK_BASE_URL
+    authEnvVar: OPENROUTER_FALLBACK_API_KEY
+    stickySession:
+      header: X-Routing-Key
+      strategy: hash
+    modelSlugs:
+      kimi-k2-6:
+        default: external-kimi-k2-6
+`);
+    tempDirs.push(dir);
+    vi.stubEnv("OSS_HARNESS_PROVIDER_CONFIG_PATH", path);
+
+    const configs = loadProviderRuntimeConfigs();
+
+    expect(configs.deepseekPrimary.stickySession.header).toBe("X-External-Session-Id");
+    expect(configs.deepseekPrimary.modelSlugs["deepseek-v4-pro"]).toBeUndefined();
+    expect(configs.openrouterFallback.modelSlugs["kimi-k2-6"]?.default).toBe(
+      "external-kimi-k2-6"
+    );
+    expect(configs.openrouterFallback.modelSlugs["deepseek-v4-pro"]).toBeUndefined();
+    expect(configs.openrouterFallback.modelSlugs["deepseek-v4-flash"]).toBeUndefined();
+  });
+
   it("validates external provider config with existing provider validation", () => {
     const { dir, path } = withProviderConfigFile(validConfigYaml().replace("strategy: raw", "strategy: cookie"));
     tempDirs.push(dir);

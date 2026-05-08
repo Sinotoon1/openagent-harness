@@ -76,7 +76,8 @@ export const queryTelemetryInputSchema = z
     toolName: z.string().min(1).optional(),
     sessionId: z.string().min(1).optional(),
     limit: z.number().int().min(1).max(200).optional(),
-    includeMetadata: z.boolean().optional()
+    includeMetadata: z.boolean().optional(),
+    includeDiagnostics: z.boolean().optional()
   })
   .strict();
 
@@ -86,7 +87,8 @@ export const getHarnessStatsInputSchema = z
     sessionId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
     limit: z.number().int().min(1).max(200).optional(),
-    includeProviders: z.boolean().optional()
+    includeProviders: z.boolean().optional(),
+    includeDiagnostics: z.boolean().optional()
   })
   .strict();
 

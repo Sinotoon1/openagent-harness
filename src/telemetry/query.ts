@@ -1,6 +1,7 @@
 import type {
   TelemetryEvent,
   TelemetryEventType,
+  TelemetryDiagnostics,
   TelemetrySink
 } from "./types.js";
 import { hashSessionId } from "../security/sessionHash.js";
@@ -14,12 +15,14 @@ export interface TelemetryQuery {
   sessionId?: string;
   limit?: number;
   includeMetadata?: boolean;
+  includeDiagnostics?: boolean;
 }
 
 export interface TelemetryQueryResult {
   total: number;
   returned: number;
   events: TelemetryEvent[];
+  diagnostics?: TelemetryDiagnostics;
 }
 
 export function queryTelemetry(
@@ -34,7 +37,8 @@ export function queryTelemetry(
     providerId: query.providerId,
     toolName: query.toolName,
     sessionIdHash,
-    limit
+    limit,
+    includeDiagnostics: query.includeDiagnostics
   });
 
   const events = telemetryWindow.events.map((event) => {
@@ -53,6 +57,9 @@ export function queryTelemetry(
   return {
     total: telemetryWindow.total,
     returned: events.length,
-    events
+    events,
+    ...(query.includeDiagnostics && telemetryWindow.diagnostics
+      ? { diagnostics: telemetryWindow.diagnostics }
+      : {})
   };
 }

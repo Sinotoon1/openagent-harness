@@ -1,9 +1,10 @@
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import {
   appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync
 } from "node:fs";
 import { hashSessionId } from "../security/sessionHash.js";
@@ -13,10 +14,13 @@ import { filterTelemetryEvents } from "./memory.js";
 import { telemetryEventTypes } from "./types.js";
 import type {
   TelemetryEvent,
+  TelemetryDiagnostics,
   TelemetryFilter,
   TelemetryQueryWindow,
   TelemetrySink
 } from "./types.js";
+
+const jsonlFileSizeWarningBytes = 10 * 1024 * 1024;
 
 export class JsonlTelemetrySink implements TelemetrySink {
   constructor(private readonly filePath: string) {
@@ -33,34 +37,79 @@ export class JsonlTelemetrySink implements TelemetrySink {
   }
 
   query(filter: TelemetryFilter): TelemetryQueryWindow {
-    const events = this.readEvents();
+    const { events, diagnostics } = this.readEvents(filter.limit);
     const matched = filterTelemetryEvents(events, filter);
 
     return {
       total: matched.length,
-      events: filter.limit === undefined ? matched : matched.slice(-filter.limit)
+      events: filter.limit === undefined ? matched : matched.slice(-filter.limit),
+      ...(filter.includeDiagnostics ? { diagnostics } : {})
     };
   }
 
-  private readEvents(): TelemetryEvent[] {
+  private readEvents(returnedWindowLimit: number | undefined): {
+    events: TelemetryEvent[];
+    diagnostics: TelemetryDiagnostics;
+  } {
+    const baseDiagnostics = (): TelemetryDiagnostics => ({
+      sinkType: "jsonl",
+      filePath: basename(this.filePath),
+      fileExists: false,
+      fileSizeBytes: 0,
+      totalLines: 0,
+      parsedLines: 0,
+      malformedLineCount: 0,
+      skippedLineCount: 0,
+      returnedWindowLimit,
+      fullFileRead: true,
+      warnings: []
+    });
+
     if (!existsSync(this.filePath)) {
-      return [];
+      return { events: [], diagnostics: baseDiagnostics() };
     }
 
+    const fileSizeBytes = statSync(this.filePath).size;
+    const warnings =
+      fileSizeBytes > jsonlFileSizeWarningBytes
+        ? [
+            `JSONL telemetry file exceeds ${jsonlFileSizeWarningBytes} bytes; reads currently scan the full file.`
+          ]
+        : [];
     const text = readFileSync(this.filePath, "utf8");
-    if (text.trim().length === 0) {
-      return [];
-    }
+    const lines = jsonlLines(text);
 
     const events: TelemetryEvent[] = [];
-    for (const line of text.split(/\r?\n/)) {
-      const event = parseTelemetryLine(line);
-      if (event) {
-        events.push(event);
+    let malformedLineCount = 0;
+    let skippedLineCount = 0;
+    for (const line of lines) {
+      const result = parseTelemetryLine(line);
+      if (result.event) {
+        events.push(result.event);
+        continue;
       }
+      if (result.malformed) {
+        malformedLineCount += 1;
+      }
+      skippedLineCount += 1;
     }
 
-    return events;
+    return {
+      events,
+      diagnostics: {
+        sinkType: "jsonl",
+        filePath: basename(this.filePath),
+        fileExists: true,
+        fileSizeBytes,
+        totalLines: lines.length,
+        parsedLines: events.length,
+        malformedLineCount,
+        skippedLineCount,
+        returnedWindowLimit,
+        fullFileRead: true,
+        warnings
+      }
+    };
   }
 }
 
@@ -71,48 +120,59 @@ function ensureJsonlFile(filePath: string): void {
   }
 }
 
-function parseTelemetryLine(line: string): TelemetryEvent | undefined {
+function jsonlLines(text: string): string[] {
+  if (text.length === 0) {
+    return [];
+  }
+
+  return text.replace(/\r?\n$/, "").split(/\r?\n/);
+}
+
+function parseTelemetryLine(line: string): { event?: TelemetryEvent; malformed: boolean } {
   const trimmed = line.trim();
   if (!trimmed) {
-    return undefined;
+    return { malformed: false };
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed) as unknown;
   } catch {
-    return undefined;
+    return { malformed: true };
   }
 
   if (!isRecord(parsed) || !isTelemetryEventType(parsed.type)) {
-    return undefined;
+    return { malformed: false };
   }
 
   const timestamp = typeof parsed.timestamp === "string" ? parsed.timestamp : undefined;
   if (!timestamp) {
-    return undefined;
+    return { malformed: false };
   }
 
   return {
-    type: parsed.type,
-    timestamp,
-    ...(typeof parsed.sessionId === "string"
-      ? { sessionIdHash: hashSessionId(parsed.sessionId) }
-      : {}),
-    ...(!("sessionId" in parsed) && isSafeSessionIdHash(parsed.sessionIdHash)
-      ? { sessionIdHash: parsed.sessionIdHash }
-      : {}),
-    ...(typeof parsed.modelId === "string"
-      ? { modelId: parsed.modelId as TelemetryEvent["modelId"] }
-      : {}),
-    ...(typeof parsed.providerId === "string"
-      ? { providerId: parsed.providerId as TelemetryEvent["providerId"] }
-      : {}),
-    ...(typeof parsed.capability === "string"
-      ? { capability: parsed.capability as TelemetryEvent["capability"] }
-      : {}),
-    ...(typeof parsed.toolName === "string" ? { toolName: parsed.toolName } : {}),
-    ...(isRecord(parsed.metadata) ? { metadata: sanitizeMetadata(parsed.metadata) } : {})
+    event: {
+      type: parsed.type,
+      timestamp,
+      ...(typeof parsed.sessionId === "string"
+        ? { sessionIdHash: hashSessionId(parsed.sessionId) }
+        : {}),
+      ...(!("sessionId" in parsed) && isSafeSessionIdHash(parsed.sessionIdHash)
+        ? { sessionIdHash: parsed.sessionIdHash }
+        : {}),
+      ...(typeof parsed.modelId === "string"
+        ? { modelId: parsed.modelId as TelemetryEvent["modelId"] }
+        : {}),
+      ...(typeof parsed.providerId === "string"
+        ? { providerId: parsed.providerId as TelemetryEvent["providerId"] }
+        : {}),
+      ...(typeof parsed.capability === "string"
+        ? { capability: parsed.capability as TelemetryEvent["capability"] }
+        : {}),
+      ...(typeof parsed.toolName === "string" ? { toolName: parsed.toolName } : {}),
+      ...(isRecord(parsed.metadata) ? { metadata: sanitizeMetadata(parsed.metadata) } : {})
+    },
+    malformed: false
   };
 }
 

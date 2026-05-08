@@ -30,6 +30,7 @@ export interface HarnessStatsInput {
   eventType?: string;
   limit?: number;
   includeProviders?: boolean;
+  includeDiagnostics?: boolean;
 }
 
 export interface HarnessStats {
@@ -75,6 +76,7 @@ export interface HarnessStats {
     compactions: number;
     byMode: Record<string, number>;
   };
+  telemetryDiagnostics?: TelemetryQueryResult["diagnostics"];
   caveats: string[];
 }
 
@@ -89,18 +91,20 @@ export function getHarnessStats(
     modelId: input.modelId,
     sessionId: input.sessionId,
     limit,
-    includeMetadata: true
+    includeMetadata: true,
+    includeDiagnostics: input.includeDiagnostics
   });
 
   return summarizeTelemetryWindow(telemetryResult, {
     limit,
-    includeProviders
+    includeProviders,
+    includeDiagnostics: input.includeDiagnostics ?? false
   });
 }
 
 function summarizeTelemetryWindow(
   telemetryResult: TelemetryQueryResult,
-  options: { limit: number; includeProviders: boolean }
+  options: { limit: number; includeProviders: boolean; includeDiagnostics: boolean }
 ): HarnessStats {
   const modelIds = new Set<string>();
   const providerIdsInWindow = new Set<string>();
@@ -233,6 +237,9 @@ function summarizeTelemetryWindow(
       compactions,
       byMode: contextByMode
     },
+    ...(options.includeDiagnostics && telemetryResult.diagnostics
+      ? { telemetryDiagnostics: telemetryResult.diagnostics }
+      : {}),
     caveats: [
       "telemetry may be in-memory or local JSONL depending on configuration",
       "stats are based on the bounded latest telemetry window"
