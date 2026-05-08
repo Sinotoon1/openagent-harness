@@ -1,3 +1,35 @@
+## oss-agent-harness-mcp v1.0.0-candidate.21
+
+This candidate release is a maintainability-only cleanup for MCP tool response
+helpers.
+
+### Changed
+
+- Extracted common MCP JSON response serialization and invalid-input response
+  helpers from `src/tools/index.ts` into `src/tools/responses.ts`.
+- Extracted pure `repair_tool_input` response shaping from `src/tools/index.ts`
+  into `src/tools/repairResponses.ts`.
+- Kept `src/tools/index.ts` focused on registering the existing MCP tools and
+  coordinating tool-specific control flow.
+
+### Preserved
+
+- Public MCP response shapes are unchanged.
+- `run_policy_doctor` invalid input still uses the no-telemetry invalid response
+  path.
+- All other tool invalid-input telemetry behavior is unchanged.
+- MCP tool names, input schemas, repair behavior, provider routing, fallback
+  semantics, streaming parser behavior, telemetry semantics, JSONL behavior,
+  security sanitization semantics, context compaction, schema descriptor
+  behavior, policy behavior, provider config loading, and package file inclusion
+  behavior are unchanged.
+
+### Validation
+
+- `npm test`: 10 test files passed, 159 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 132 files, 83.1 kB package, 396.4 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.20
 
 This candidate release adds real-provider smoke-test documentation and MCP
