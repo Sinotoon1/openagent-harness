@@ -1,3 +1,32 @@
+## oss-agent-harness-mcp v1.0.0-candidate.23
+
+This candidate release is test-maintainability-only.
+
+### Changed
+
+- Split the oversized `tests/tools.test.ts` coverage into focused MCP tool test
+  files for chat, diagnostics, policy, repair, and telemetry behavior.
+- Extracted shared test-only helpers for MCP tool registration/calls, fake
+  provider responses, telemetry temp files, schema descriptors, sanitized-output
+  assertions, repair telemetry fixtures, and common provider fixtures.
+- Updated package metadata and MCP server advertised version to
+  `1.0.0-candidate.23`.
+
+### Preserved
+
+- Runtime behavior is unchanged.
+- MCP tool names, public response shapes, repair behavior, provider routing,
+  fallback semantics, streaming parser behavior, telemetry semantics, JSONL
+  behavior, security sanitization semantics, context compaction, schema
+  descriptor behavior, policy behavior, provider config loading, and package file
+  inclusion behavior are unchanged.
+
+### Validation
+
+- `npm test`: 15 test files passed, 163 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 150 files, 86.2 kB package, 413.4 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.22
 
 This candidate release is a maintainability-only constants centralization pass.
