@@ -3,6 +3,8 @@
 These examples use the current package name, `oss-agent-harness-mcp`, and the
 same provider environment variables used by the runtime. Replace placeholder
 URLs and API keys with real OpenAI-compatible provider settings.
+Set `OSS_HARNESS_PROVIDER_CONFIG_PATH` as well when you want a user-editable
+provider config file to replace the bundled provider config.
 
 For local development from this repository, run `npm run build` first and point
 clients at `node D:/Work/Python/openagent-harness/dist/server.js`.
@@ -21,10 +23,11 @@ args = ["D:/Work/Python/openagent-harness/dist/server.js"]
 enabled = true
 
 [mcp_servers.oss-agent-harness.env]
-PROVIDER_ONE_BASE_URL = "https://provider-one.example/v1"
-PROVIDER_ONE_API_KEY = "YOUR_KEY"
-PROVIDER_TWO_BASE_URL = "https://provider-two.example/v1"
-PROVIDER_TWO_API_KEY = "YOUR_KEY"
+OSS_HARNESS_PROVIDER_CONFIG_PATH = "D:/Work/Python/openagent-harness/providers.local.yaml"
+DEEPSEEK_PRIMARY_BASE_URL = "https://deepseek-primary.example/v1"
+DEEPSEEK_PRIMARY_API_KEY = "YOUR_KEY"
+OPENROUTER_FALLBACK_BASE_URL = "https://openrouter-fallback.example/v1"
+OPENROUTER_FALLBACK_API_KEY = "YOUR_KEY"
 ```
 
 Installed package:
@@ -35,10 +38,11 @@ command = "oss-agent-harness-mcp"
 enabled = true
 
 [mcp_servers.oss-agent-harness.env]
-PROVIDER_ONE_BASE_URL = "https://provider-one.example/v1"
-PROVIDER_ONE_API_KEY = "YOUR_KEY"
-PROVIDER_TWO_BASE_URL = "https://provider-two.example/v1"
-PROVIDER_TWO_API_KEY = "YOUR_KEY"
+OSS_HARNESS_PROVIDER_CONFIG_PATH = "D:/Work/Python/openagent-harness/providers.local.yaml"
+DEEPSEEK_PRIMARY_BASE_URL = "https://deepseek-primary.example/v1"
+DEEPSEEK_PRIMARY_API_KEY = "YOUR_KEY"
+OPENROUTER_FALLBACK_BASE_URL = "https://openrouter-fallback.example/v1"
+OPENROUTER_FALLBACK_API_KEY = "YOUR_KEY"
 ```
 
 ## Claude Code
@@ -47,10 +51,11 @@ Local checkout:
 
 ```bash
 claude mcp add --transport stdio \
-  --env PROVIDER_ONE_BASE_URL=https://provider-one.example/v1 \
-  --env PROVIDER_ONE_API_KEY=YOUR_KEY \
-  --env PROVIDER_TWO_BASE_URL=https://provider-two.example/v1 \
-  --env PROVIDER_TWO_API_KEY=YOUR_KEY \
+  --env OSS_HARNESS_PROVIDER_CONFIG_PATH=D:/Work/Python/openagent-harness/providers.local.yaml \
+  --env DEEPSEEK_PRIMARY_BASE_URL=https://deepseek-primary.example/v1 \
+  --env DEEPSEEK_PRIMARY_API_KEY=YOUR_KEY \
+  --env OPENROUTER_FALLBACK_BASE_URL=https://openrouter-fallback.example/v1 \
+  --env OPENROUTER_FALLBACK_API_KEY=YOUR_KEY \
   oss-agent-harness \
   -- node D:/Work/Python/openagent-harness/dist/server.js
 ```
@@ -59,10 +64,11 @@ Installed package:
 
 ```bash
 claude mcp add --transport stdio \
-  --env PROVIDER_ONE_BASE_URL=https://provider-one.example/v1 \
-  --env PROVIDER_ONE_API_KEY=YOUR_KEY \
-  --env PROVIDER_TWO_BASE_URL=https://provider-two.example/v1 \
-  --env PROVIDER_TWO_API_KEY=YOUR_KEY \
+  --env OSS_HARNESS_PROVIDER_CONFIG_PATH=D:/Work/Python/openagent-harness/providers.local.yaml \
+  --env DEEPSEEK_PRIMARY_BASE_URL=https://deepseek-primary.example/v1 \
+  --env DEEPSEEK_PRIMARY_API_KEY=YOUR_KEY \
+  --env OPENROUTER_FALLBACK_BASE_URL=https://openrouter-fallback.example/v1 \
+  --env OPENROUTER_FALLBACK_API_KEY=YOUR_KEY \
   oss-agent-harness \
   -- oss-agent-harness-mcp
 ```
@@ -79,10 +85,11 @@ Local checkout:
       "command": "node",
       "args": ["D:/Work/Python/openagent-harness/dist/server.js"],
       "env": {
-        "PROVIDER_ONE_BASE_URL": "https://provider-one.example/v1",
-        "PROVIDER_ONE_API_KEY": "YOUR_KEY",
-        "PROVIDER_TWO_BASE_URL": "https://provider-two.example/v1",
-        "PROVIDER_TWO_API_KEY": "YOUR_KEY"
+        "OSS_HARNESS_PROVIDER_CONFIG_PATH": "D:/Work/Python/openagent-harness/providers.local.yaml",
+        "DEEPSEEK_PRIMARY_BASE_URL": "https://deepseek-primary.example/v1",
+        "DEEPSEEK_PRIMARY_API_KEY": "YOUR_KEY",
+        "OPENROUTER_FALLBACK_BASE_URL": "https://openrouter-fallback.example/v1",
+        "OPENROUTER_FALLBACK_API_KEY": "YOUR_KEY"
       }
     }
   }
@@ -98,10 +105,11 @@ Installed package:
       "type": "stdio",
       "command": "oss-agent-harness-mcp",
       "env": {
-        "PROVIDER_ONE_BASE_URL": "https://provider-one.example/v1",
-        "PROVIDER_ONE_API_KEY": "YOUR_KEY",
-        "PROVIDER_TWO_BASE_URL": "https://provider-two.example/v1",
-        "PROVIDER_TWO_API_KEY": "YOUR_KEY"
+        "OSS_HARNESS_PROVIDER_CONFIG_PATH": "D:/Work/Python/openagent-harness/providers.local.yaml",
+        "DEEPSEEK_PRIMARY_BASE_URL": "https://deepseek-primary.example/v1",
+        "DEEPSEEK_PRIMARY_API_KEY": "YOUR_KEY",
+        "OPENROUTER_FALLBACK_BASE_URL": "https://openrouter-fallback.example/v1",
+        "OPENROUTER_FALLBACK_API_KEY": "YOUR_KEY"
       }
     }
   }
@@ -121,10 +129,11 @@ Local checkout:
       "command": ["node", "D:/Work/Python/openagent-harness/dist/server.js"],
       "enabled": true,
       "environment": {
-        "PROVIDER_ONE_BASE_URL": "https://provider-one.example/v1",
-        "PROVIDER_ONE_API_KEY": "YOUR_KEY",
-        "PROVIDER_TWO_BASE_URL": "https://provider-two.example/v1",
-        "PROVIDER_TWO_API_KEY": "YOUR_KEY"
+        "OSS_HARNESS_PROVIDER_CONFIG_PATH": "D:/Work/Python/openagent-harness/providers.local.yaml",
+        "DEEPSEEK_PRIMARY_BASE_URL": "https://deepseek-primary.example/v1",
+        "DEEPSEEK_PRIMARY_API_KEY": "YOUR_KEY",
+        "OPENROUTER_FALLBACK_BASE_URL": "https://openrouter-fallback.example/v1",
+        "OPENROUTER_FALLBACK_API_KEY": "YOUR_KEY"
       }
     }
   }
@@ -142,10 +151,11 @@ Installed package:
       "command": ["oss-agent-harness-mcp"],
       "enabled": true,
       "environment": {
-        "PROVIDER_ONE_BASE_URL": "https://provider-one.example/v1",
-        "PROVIDER_ONE_API_KEY": "YOUR_KEY",
-        "PROVIDER_TWO_BASE_URL": "https://provider-two.example/v1",
-        "PROVIDER_TWO_API_KEY": "YOUR_KEY"
+        "OSS_HARNESS_PROVIDER_CONFIG_PATH": "D:/Work/Python/openagent-harness/providers.local.yaml",
+        "DEEPSEEK_PRIMARY_BASE_URL": "https://deepseek-primary.example/v1",
+        "DEEPSEEK_PRIMARY_API_KEY": "YOUR_KEY",
+        "OPENROUTER_FALLBACK_BASE_URL": "https://openrouter-fallback.example/v1",
+        "OPENROUTER_FALLBACK_API_KEY": "YOUR_KEY"
       }
     }
   }

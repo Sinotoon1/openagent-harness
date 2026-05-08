@@ -16,7 +16,7 @@ describe("repairToolInput", () => {
   });
 
   it("does not strip null optional fields when the model policy does not allow it", () => {
-    const result = repairToolInput("deepseek-flash", "pathBatch", {
+    const result = repairToolInput("deepseek-v4-flash", "pathBatch", {
       paths: [],
       optionalPaths: null
     });
@@ -141,7 +141,7 @@ describe("repairToolInput", () => {
   });
 
   it("returns a concise model-readable message when repair cannot make input valid", () => {
-    const result = repairToolInput("deepseek-flash", "pathBatch", {
+    const result = repairToolInput("deepseek-v4-flash", "pathBatch", {
       paths: [],
       optionalPaths: null
     });

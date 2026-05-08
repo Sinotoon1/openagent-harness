@@ -44,7 +44,7 @@ afterEach(() => {
 
 describe("OpenAICompatibleProviderAdapter", () => {
   it("keeps non-streaming request behavior compatible", async () => {
-    const provider = createProvider("providerOne", "https://provider-one.example/v1");
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as { stream: boolean };
       expect(body.stream).toBe(false);
@@ -61,7 +61,7 @@ describe("OpenAICompatibleProviderAdapter", () => {
   });
 
   it("streams multiple content chunks until [DONE]", async () => {
-    const provider = createProvider("providerOne", "https://provider-one.example/v1");
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as { stream: boolean };
       expect(body.stream).toBe(true);
@@ -85,7 +85,7 @@ describe("OpenAICompatibleProviderAdapter", () => {
   });
 
   it("collects tool-call deltas as meaningful streaming output", async () => {
-    const provider = createProvider("providerOne", "https://provider-one.example/v1");
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -116,7 +116,7 @@ describe("OpenAICompatibleProviderAdapter", () => {
   });
 
   it("returns collected content when stream EOF arrives without [DONE]", async () => {
-    const provider = createProvider("providerOne", "https://provider-one.example/v1");
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -138,7 +138,7 @@ describe("OpenAICompatibleProviderAdapter", () => {
   });
 
   it("returns an empty string for empty streaming output", async () => {
-    const provider = createProvider("providerOne", "https://provider-one.example/v1");
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     vi.stubGlobal("fetch", vi.fn(async () => sseResponse(["data: [DONE]\n\n"])));
 
     const result = await provider.completeChat({
@@ -154,7 +154,7 @@ describe("OpenAICompatibleProviderAdapter", () => {
   });
 
   it("ignores SSE comment lines", async () => {
-    const provider = createProvider("providerOne", "https://provider-one.example/v1");
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -175,7 +175,7 @@ describe("OpenAICompatibleProviderAdapter", () => {
   });
 
   it("does not support SSE multi-line data JSON events", async () => {
-    const provider = createProvider("providerOne", "https://provider-one.example/v1");
+    const provider = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -200,24 +200,24 @@ describe("OpenAICompatibleProviderAdapter", () => {
 describe("streaming fallback semantics", () => {
   it("falls back when provider request fails before first token", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = createProvider("providerOne", "https://provider-one.example/v1");
-    const providerTwo = createProvider("providerTwo", "https://provider-two.example/v1");
+    const deepseekPrimary = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    const openrouterFallback = createProvider("openrouterFallback", "https://openrouter-fallback.example/v1");
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.startsWith("https://provider-one.example")) {
+      if (url.startsWith("https://deepseek-primary.example")) {
         throw new Error("network unavailable");
       }
       return sseResponse([sseData({ choices: [{ delta: { content: "fallback" } }] })]);
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+    const router = new ChatRouter([deepseekPrimary, openrouterFallback], telemetry);
     const result = await router.route({
       ...chatRequest,
-      providerPriority: ["providerOne", "providerTwo"],
+      providerPriority: ["deepseekPrimary", "openrouterFallback"],
       streaming: { enabled: true }
     });
 
-    expect(result.providerId).toBe("providerTwo");
+    expect(result.providerId).toBe("openrouterFallback");
     expect(result.content).toBe("fallback");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(telemetry.events).toContainEqual(
@@ -231,8 +231,8 @@ describe("streaming fallback semantics", () => {
   });
 
   it("does not fallback when provider stream fails after first token", async () => {
-    const providerOne = createProvider("providerOne", "https://provider-one.example/v1");
-    const providerTwo = createProvider("providerTwo", "https://provider-two.example/v1");
+    const deepseekPrimary = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    const openrouterFallback = createProvider("openrouterFallback", "https://openrouter-fallback.example/v1");
     const fetchMock = vi.fn(async () =>
       sseResponse(
         [
@@ -244,14 +244,14 @@ describe("streaming fallback semantics", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const router = new ChatRouter(
-      [providerOne, providerTwo],
+      [deepseekPrimary, openrouterFallback],
       new InMemoryTelemetrySink()
     );
 
     await expect(
       router.route({
         ...chatRequest,
-        providerPriority: ["providerOne", "providerTwo"],
+        providerPriority: ["deepseekPrimary", "openrouterFallback"],
         streaming: { enabled: true }
       })
     ).rejects.toMatchObject({
@@ -263,10 +263,10 @@ describe("streaming fallback semantics", () => {
   });
 
   it("falls back on malformed SSE before first token", async () => {
-    const providerOne = createProvider("providerOne", "https://provider-one.example/v1");
-    const providerTwo = createProvider("providerTwo", "https://provider-two.example/v1");
+    const deepseekPrimary = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    const openrouterFallback = createProvider("openrouterFallback", "https://openrouter-fallback.example/v1");
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.startsWith("https://provider-one.example")) {
+      if (url.startsWith("https://deepseek-primary.example")) {
         return sseResponse(["data: {not-json}\n\n"]);
       }
       return sseResponse([sseData({ choices: [{ delta: { content: "recovered" } }] })]);
@@ -274,23 +274,23 @@ describe("streaming fallback semantics", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const router = new ChatRouter(
-      [providerOne, providerTwo],
+      [deepseekPrimary, openrouterFallback],
       new InMemoryTelemetrySink()
     );
     const result = await router.route({
       ...chatRequest,
-      providerPriority: ["providerOne", "providerTwo"],
+      providerPriority: ["deepseekPrimary", "openrouterFallback"],
       streaming: { enabled: true }
     });
 
-    expect(result.providerId).toBe("providerTwo");
+    expect(result.providerId).toBe("openrouterFallback");
     expect(result.content).toBe("recovered");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not fallback on malformed SSE after first token", async () => {
-    const providerOne = createProvider("providerOne", "https://provider-one.example/v1");
-    const providerTwo = createProvider("providerTwo", "https://provider-two.example/v1");
+    const deepseekPrimary = createProvider("deepseekPrimary", "https://deepseek-primary.example/v1");
+    const openrouterFallback = createProvider("openrouterFallback", "https://openrouter-fallback.example/v1");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -302,14 +302,14 @@ describe("streaming fallback semantics", () => {
     );
 
     const router = new ChatRouter(
-      [providerOne, providerTwo],
+      [deepseekPrimary, openrouterFallback],
       new InMemoryTelemetrySink()
     );
 
     await expect(
       router.route({
         ...chatRequest,
-        providerPriority: ["providerOne", "providerTwo"],
+        providerPriority: ["deepseekPrimary", "openrouterFallback"],
         streaming: { enabled: true }
       })
     ).rejects.toBeInstanceOf(ProviderError);

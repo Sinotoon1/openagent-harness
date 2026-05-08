@@ -113,10 +113,10 @@ describe("MCP tools", () => {
         )
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
-      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+      const responseText = await callOssChat(handlers, { providerPriority: ["deepseekPrimary"] });
       const body = JSON.parse(responseText) as {
         modelId: string;
         providerId: string;
@@ -129,7 +129,7 @@ describe("MCP tools", () => {
 
       expect(body).toMatchObject({
         modelId: "kimi-k2-6",
-        providerId: "providerOne",
+        providerId: "deepseekPrimary",
         content: "safe model answer",
         usage: {
           prompt_tokens: 3,
@@ -165,11 +165,11 @@ describe("MCP tools", () => {
         )
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne"],
+        providerPriority: ["deepseekPrimary"],
         streaming: { enabled: true }
       });
       const body = JSON.parse(responseText) as {
@@ -242,11 +242,11 @@ describe("MCP tools", () => {
         )
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne"],
+        providerPriority: ["deepseekPrimary"],
         includeRawProviderResponse: true
       });
       const body = JSON.parse(responseText) as {
@@ -299,7 +299,7 @@ describe("MCP tools", () => {
         vi.fn(async () =>
           jsonResponse({
             id: "chatcmpl-safe-metadata-id",
-            model: "providerOne-kimi",
+            model: "deepseek-v4-pro",
             created: 1234567890,
             object: "chat.completion",
             status: "completed",
@@ -329,11 +329,11 @@ describe("MCP tools", () => {
         )
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne"],
+        providerPriority: ["deepseekPrimary"],
         includeRawProviderResponse: true
       });
       const body = JSON.parse(responseText) as {
@@ -355,7 +355,7 @@ describe("MCP tools", () => {
         };
       };
 
-      expect(body.providerId).toBe("providerOne");
+      expect(body.providerId).toBe("deepseekPrimary");
       expect(body.content).toBe("container-safe answer");
       expect(body.usage).toEqual({
         prompt_tokens: 2,
@@ -365,7 +365,7 @@ describe("MCP tools", () => {
       expect(body.finishReason).toBe("stop");
       expect(body.rawProviderResponsePreview).toMatchObject({
         id: "chatcmpl-safe-metadata-id",
-        model: "providerOne-kimi",
+        model: "deepseek-v4-pro",
         created: 1234567890,
         object: "chat.completion",
         status: "completed",
@@ -418,11 +418,11 @@ describe("MCP tools", () => {
         )
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne"],
+        providerPriority: ["deepseekPrimary"],
         includeRawProviderResponse: true
       });
       const body = JSON.parse(responseText) as {
@@ -470,12 +470,12 @@ describe("MCP tools", () => {
         vi.fn(async () => textResponse(rawBody, 500))
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
-      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+      const responseText = await callOssChat(handlers, { providerPriority: ["deepseekPrimary"] });
 
-      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).toContain("Provider deepseekPrimary returned HTTP 500");
       expect(responseText).not.toContain(rawBody);
       expect(responseText).not.toContain("raw-body-123");
     });
@@ -487,15 +487,15 @@ describe("MCP tools", () => {
         vi.fn(async () => textResponse(rawBody, 503))
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne"],
+        providerPriority: ["deepseekPrimary"],
         streaming: { enabled: true }
       });
 
-      expect(responseText).toContain("Provider providerOne returned HTTP 503");
+      expect(responseText).toContain("Provider deepseekPrimary returned HTTP 503");
       expect(responseText).toContain("before_first_token");
       expect(responseText).not.toContain(rawBody);
       expect(responseText).not.toContain("stream-leak-456");
@@ -513,15 +513,15 @@ describe("MCP tools", () => {
         )
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne"],
+        providerPriority: ["deepseekPrimary"],
         streaming: { enabled: true }
       });
 
-      expect(responseText).toContain("Provider providerOne stream failed after assistant output started");
+      expect(responseText).toContain("Provider deepseekPrimary stream failed after assistant output started");
       expect(responseText).not.toContain(rawStreamError);
       expect(responseText).not.toContain("stream-leak-789");
     });
@@ -533,12 +533,12 @@ describe("MCP tools", () => {
         vi.fn(async () => textResponse(rawBody, 500))
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
-      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+      const responseText = await callOssChat(handlers, { providerPriority: ["deepseekPrimary"] });
 
-      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).toContain("Provider deepseekPrimary returned HTTP 500");
       expect(responseText).not.toContain("User prompt");
       expect(responseText).not.toContain("private roadmap");
       expect(responseText).not.toContain("prior messages");
@@ -546,21 +546,21 @@ describe("MCP tools", () => {
 
     it("does not return raw header-like or env-like provider HTTP bodies", async () => {
       const rawBody =
-        "X-Internal-Trace: trace-abc-123\nPROVIDER_ONE_BASE_URL=https://internal.example";
+        "X-Internal-Trace: trace-abc-123\nDEEPSEEK_PRIMARY_BASE_URL=https://internal.example";
       vi.stubGlobal(
         "fetch",
         vi.fn(async () => textResponse(rawBody, 502))
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
-      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+      const responseText = await callOssChat(handlers, { providerPriority: ["deepseekPrimary"] });
 
-      expect(responseText).toContain("Provider providerOne returned HTTP 502");
+      expect(responseText).toContain("Provider deepseekPrimary returned HTTP 502");
       expect(responseText).not.toContain("X-Internal-Trace");
       expect(responseText).not.toContain("trace-abc-123");
-      expect(responseText).not.toContain("PROVIDER_ONE_BASE_URL");
+      expect(responseText).not.toContain("DEEPSEEK_PRIMARY_BASE_URL");
       expect(responseText).not.toContain("internal.example");
     });
 
@@ -571,12 +571,12 @@ describe("MCP tools", () => {
         vi.fn(async () => textResponse(rawBody, 500))
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
-      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+      const responseText = await callOssChat(handlers, { providerPriority: ["deepseekPrimary"] });
 
-      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).toContain("Provider deepseekPrimary returned HTTP 500");
       expect(responseText).not.toContain("raw-provider-token-12345");
       expect(responseText).not.toContain("Authorization");
       expect(responseText).not.toContain("<redacted>");
@@ -588,12 +588,12 @@ describe("MCP tools", () => {
         vi.fn(async () => textResponse("raw body should be omitted", 429))
       );
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1")
       ]);
 
-      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+      const responseText = await callOssChat(handlers, { providerPriority: ["deepseekPrimary"] });
 
-      expect(responseText).toContain("providerOne");
+      expect(responseText).toContain("deepseekPrimary");
       expect(responseText).toContain("HTTP 429");
       expect(responseText).toContain("before_first_token");
       expect(responseText).toContain("retryable");
@@ -603,7 +603,7 @@ describe("MCP tools", () => {
     it("still falls back for retryable HTTP errors before first token", async () => {
       const fetchMock = vi.fn(async (input: string | URL | Request) => {
         const url = String(input);
-        if (url.startsWith("https://provider-one.example")) {
+        if (url.startsWith("https://deepseek-primary.example")) {
           return textResponse("raw body from first provider fallback-leak", 500);
         }
         return jsonResponse({
@@ -612,16 +612,16 @@ describe("MCP tools", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
       const { handlers, telemetry } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1"),
-        createOpenAIProvider("providerTwo", "https://provider-two.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1"),
+        createOpenAIProvider("openrouterFallback", "https://openrouter-fallback.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne", "providerTwo"]
+        providerPriority: ["deepseekPrimary", "openrouterFallback"]
       });
 
-      expect(responseText).toContain('"providerId": "providerTwo"');
-      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).toContain('"providerId": "openrouterFallback"');
+      expect(responseText).toContain("Provider deepseekPrimary returned HTTP 500");
       expect(responseText).not.toContain("fallback-leak");
       expect(JSON.stringify(telemetry.getEvents())).not.toContain("fallback-leak");
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -630,7 +630,7 @@ describe("MCP tools", () => {
     it("still does not fallback after first streamed token", async () => {
       const fetchMock = vi.fn(async (input: string | URL | Request) => {
         const url = String(input);
-        if (url.startsWith("https://provider-two.example")) {
+        if (url.startsWith("https://openrouter-fallback.example")) {
           return jsonResponse({
             choices: [{ message: { content: "must not be used" } }]
           });
@@ -642,16 +642,16 @@ describe("MCP tools", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
       const { handlers } = makeRegisteredToolsWithProviders([
-        createOpenAIProvider("providerOne", "https://provider-one.example/v1"),
-        createOpenAIProvider("providerTwo", "https://provider-two.example/v1")
+        createOpenAIProvider("deepseekPrimary", "https://deepseek-primary.example/v1"),
+        createOpenAIProvider("openrouterFallback", "https://openrouter-fallback.example/v1")
       ]);
 
       const responseText = await callOssChat(handlers, {
-        providerPriority: ["providerOne", "providerTwo"],
+        providerPriority: ["deepseekPrimary", "openrouterFallback"],
         streaming: { enabled: true }
       });
 
-      expect(responseText).toContain("Provider providerOne stream failed after assistant output started");
+      expect(responseText).toContain("Provider deepseekPrimary stream failed after assistant output started");
       expect(responseText).not.toContain("must not be used");
       expect(responseText).not.toContain("no-fallback-leak");
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -689,7 +689,7 @@ describe("MCP tools", () => {
     expect(body.models.map((model) => model.modelId)).toEqual([
       "kimi-k2-6",
       "deepseek-v4-pro",
-      "deepseek-flash"
+      "deepseek-v4-flash"
     ]);
     expect(body.models.every((model) => model.valid)).toBe(true);
   });
@@ -721,9 +721,9 @@ describe("MCP tools", () => {
 
     expect(body.models[0]?.providerOverrides).toEqual([
       {
-        providerId: "providerTwo",
+        providerId: "deepseekPrimary",
         thinking: "disabled",
-        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled"
+        reason: "deepseek-v4-pro on deepseekPrimary must run with thinking disabled"
       }
     ]);
   });
@@ -886,8 +886,8 @@ describe("MCP tools", () => {
       (await handlers.get("inspect_model_policies")?.({ includeWarnings: true }))?.content[0]
         ?.text ?? "";
 
-    expect(response).not.toContain("PROVIDER_ONE_API_KEY");
-    expect(response).not.toContain("PROVIDER_TWO_API_KEY");
+    expect(response).not.toContain("DEEPSEEK_PRIMARY_API_KEY");
+    expect(response).not.toContain("OPENROUTER_FALLBACK_API_KEY");
     expect(response).not.toContain("YOUR_KEY");
     expect(response).not.toContain("sk-");
   });
@@ -917,6 +917,22 @@ describe("MCP tools", () => {
         toolName: "get_model_policy"
       })
     ]);
+  });
+
+  it("rejects the old deepseek-flash model ID", async () => {
+    const telemetry = new InMemoryTelemetrySink();
+    const { handlers } = makeRegisteredTools(telemetry);
+
+    const result = await handlers.get("get_model_policy")?.({ modelId: "deepseek-flash" });
+    const body = parseToolResult(result!) as {
+      valid: boolean;
+      issues: Array<{ path: string; message: string }>;
+    };
+
+    expect(result?.isError).toBe(true);
+    expect(body.valid).toBe(false);
+    expect(body.issues[0]?.path).toBe("modelId");
+    expect(JSON.stringify(body)).toContain("deepseek-v4-flash");
   });
 
   it("queries telemetry with redacted metadata only when requested", async () => {
@@ -1545,7 +1561,7 @@ describe("MCP tools", () => {
     telemetry.record({
       type: "eval_event_recorded",
       sessionId: "other-session",
-      modelId: "deepseek-flash"
+      modelId: "deepseek-v4-flash"
     });
 
     const storedEvent = telemetry.getEvents()[0];
@@ -1700,7 +1716,7 @@ describe("MCP tools", () => {
     const { handlers } = makeRegisteredTools();
 
     const result = parseToolResult(
-      (await handlers.get("suggest_repair_policy")?.({ modelId: "deepseek-flash" }))!
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "deepseek-v4-flash" }))!
     ) as {
       suggestions: unknown[];
       policySuggestions: Array<{
@@ -1721,7 +1737,7 @@ describe("MCP tools", () => {
     expect(result.suggestions).toEqual([]);
     expect(result.policySuggestions).toHaveLength(1);
     expect(suggestion).toMatchObject({
-      modelId: "deepseek-flash",
+      modelId: "deepseek-v4-flash",
       kind: "repair_order",
       status: "insufficient_data",
       confidence: "low",
@@ -1821,7 +1837,7 @@ describe("MCP tools", () => {
     const { handlers } = makeRegisteredTools(telemetry);
 
     const response =
-      (await handlers.get("suggest_repair_policy")?.({ modelId: "deepseek-flash" }))?.content[0]
+      (await handlers.get("suggest_repair_policy")?.({ modelId: "deepseek-v4-flash" }))?.content[0]
         ?.text ?? "";
 
     expect(response).toContain("insufficient_data");
@@ -2107,10 +2123,10 @@ describe("MCP tools", () => {
       type: "provider_fallback",
       sessionId: "stats-session",
       modelId: "deepseek-v4-pro",
-      providerId: "providerOne",
+      providerId: "deepseekPrimary",
       metadata: {
-        fromProvider: "providerOne",
-        toProvider: "providerTwo",
+        fromProvider: "deepseekPrimary",
+        toProvider: "openrouterFallback",
         fallbackPhase: "before_first_token"
       }
     });
@@ -2118,13 +2134,13 @@ describe("MCP tools", () => {
       type: "cache_likely_cold",
       sessionId: "stats-session",
       modelId: "deepseek-v4-pro",
-      providerId: "providerOne"
+      providerId: "deepseekPrimary"
     });
     telemetry.record({
       type: "cache_likely_warm",
       sessionId: "stats-session",
       modelId: "deepseek-v4-pro",
-      providerId: "providerOne"
+      providerId: "deepseekPrimary"
     });
     telemetry.record({
       type: "context_compacted",
@@ -2182,7 +2198,7 @@ describe("MCP tools", () => {
     expect(result.repairs.byRepair.parseJsonArrayString).toBe(1);
     expect(result.repairs.byTool.repair_tool_input).toBe(1);
     expect(result.routing.fallbacks).toBe(1);
-    expect(result.routing.byProvider.providerOne).toBe(1);
+    expect(result.routing.byProvider.deepseekPrimary).toBe(1);
     expect(result.routing.byPhase.beforeFirstToken).toBe(1);
     expect(result.streaming.success).toBe(1);
     expect(result.streaming.failuresBeforeFirstToken).toBe(1);
@@ -2200,7 +2216,7 @@ describe("MCP tools", () => {
     });
     telemetry.record({
       type: "tool_input_invalid",
-      modelId: "deepseek-flash",
+      modelId: "deepseek-v4-flash",
       toolName: "repair_tool_input"
     });
     const { handlers } = makeRegisteredTools(telemetry);
@@ -2287,10 +2303,10 @@ describe("MCP tools", () => {
     telemetry.record({
       type: "provider_fallback",
       modelId: "deepseek-v4-pro",
-      providerId: "providerOne",
+      providerId: "deepseekPrimary",
       metadata: {
-        fromProvider: "providerOne",
-        toProvider: "providerTwo",
+        fromProvider: "deepseekPrimary",
+        toProvider: "openrouterFallback",
         fallbackPhase: "before_first_token"
       }
     });
@@ -2312,8 +2328,8 @@ describe("MCP tools", () => {
     expect(result.routing.fallbacks).toBe(1);
     expect(result.routing.byProvider).toEqual({});
     expect(result.routing.byPhase.beforeFirstToken).toBe(1);
-    expect(response).not.toContain("providerOne");
-    expect(response).not.toContain("providerTwo");
+    expect(response).not.toContain("deepseekPrimary");
+    expect(response).not.toContain("openrouterFallback");
   });
 
   it("filters harness stats by eventType and leaves partial repair rates explicit", async () => {

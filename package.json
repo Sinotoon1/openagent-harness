@@ -1,6 +1,6 @@
 {
   "name": "oss-agent-harness-mcp",
-  "version": "1.0.0-candidate.17",
+  "version": "1.0.0-candidate.19",
   "description": "First-version MCP server exposing an OSS coding-agent harness.",
   "type": "module",
   "bin": {
@@ -10,7 +10,8 @@
     "dist",
     "README.md",
     "CHANGELOG.md",
-    "docs"
+    "docs",
+    "examples"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-policies.mjs",

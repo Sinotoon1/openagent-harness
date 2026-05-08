@@ -28,7 +28,7 @@ const providerConfigSchema = z
     baseUrlEnv: envVarNameSchema,
     authEnvVar: envVarNameSchema,
     stickySession: stickySessionSchema,
-    modelSlugs: z.record(
+    modelSlugs: z.partialRecord(
       z.enum(canonicalModelIds),
       z
         .object({
@@ -86,7 +86,7 @@ export interface ProviderModelSlugConfig {
 export interface ProviderRuntimeDefinition extends ProviderRuntimeConfig {
   baseUrlEnv: string;
   authEnvVar: string;
-  modelSlugs: Record<CanonicalModelId, ProviderModelSlugConfig>;
+  modelSlugs: Partial<Record<CanonicalModelId, ProviderModelSlugConfig>>;
 }
 
 export type ProviderRuntimeConfigMap = Record<ProviderId, ProviderRuntimeDefinition>;
@@ -98,9 +98,29 @@ export class ProviderConfigError extends Error {
   }
 }
 
+const externalProviderConfigPathEnv = "OSS_HARNESS_PROVIDER_CONFIG_PATH";
+
 export function loadProviderRuntimeConfigs(): ProviderRuntimeConfigMap {
-  const raw = readFileSync(resolveProviderConfigPath(), "utf8");
-  return parseProviderRuntimeConfigs(YAML.parse(raw));
+  const configPath = resolveProviderConfigPath();
+  let raw: string;
+  try {
+    raw = readFileSync(configPath, "utf8");
+  } catch (error) {
+    throw new ProviderConfigError(
+      `Provider config file could not be read: ${configPath}: ${errorMessage(error)}`
+    );
+  }
+
+  let parsedYaml: unknown;
+  try {
+    parsedYaml = YAML.parse(raw);
+  } catch (error) {
+    throw new ProviderConfigError(
+      `Provider config YAML is invalid: ${configPath}: ${errorMessage(error)}`
+    );
+  }
+
+  return parseProviderRuntimeConfigs(parsedYaml);
 }
 
 export function parseProviderRuntimeConfigs(rawConfig: unknown): ProviderRuntimeConfigMap {
@@ -116,6 +136,16 @@ export function parseProviderRuntimeConfigs(rawConfig: unknown): ProviderRuntime
 }
 
 function resolveProviderConfigPath(): string {
+  const externalPath = process.env[externalProviderConfigPathEnv];
+  if (externalPath !== undefined && externalPath !== "") {
+    const resolvedExternalPath = resolve(externalPath);
+    if (!existsSync(resolvedExternalPath)) {
+      throw new ProviderConfigError(`Provider config file not found: ${resolvedExternalPath}`);
+    }
+
+    return resolvedExternalPath;
+  }
+
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
     resolve(here, "providers.yaml"),
@@ -129,6 +159,10 @@ function resolveProviderConfigPath(): string {
   }
 
   return found;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function formatProviderConfigIssues(issues: z.core.$ZodIssue[]): string {

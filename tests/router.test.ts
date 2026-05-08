@@ -16,7 +16,7 @@ class FakeProvider implements ProviderAdapter {
   readonly supportedModels: CanonicalModelId[] = [
     "kimi-k2-6",
     "deepseek-v4-pro",
-    "deepseek-flash"
+    "deepseek-v4-flash"
   ];
   readonly calls: ProviderChatRequest[] = [];
 
@@ -64,94 +64,94 @@ const allCapabilities: Required<CapabilityFlags> = {
 describe("ChatRouter", () => {
   it("falls back in provider priority order on retryable failures", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = new FakeProvider(
-      "providerOne",
+    const deepseekPrimary = new FakeProvider(
+      "deepseekPrimary",
       allCapabilities,
       "retryableFailure"
     );
-    const providerTwo = new FakeProvider("providerTwo", allCapabilities);
-    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+    const openrouterFallback = new FakeProvider("openrouterFallback", allCapabilities);
+    const router = new ChatRouter([deepseekPrimary, openrouterFallback], telemetry);
 
     const result = await router.route({
       modelId: "kimi-k2-6",
       sessionId: "s1",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerOne", "providerTwo"]
+      providerPriority: ["deepseekPrimary", "openrouterFallback"]
     });
 
-    expect(result.providerId).toBe("providerTwo");
+    expect(result.providerId).toBe("openrouterFallback");
     expect(result.attempts.map((attempt) => attempt.providerId)).toEqual([
-      "providerOne",
-      "providerTwo"
+      "deepseekPrimary",
+      "openrouterFallback"
     ]);
     expect(telemetry.events.some((event) => event.type === "provider_fallback")).toBe(true);
   });
 
   it("keeps primary provider capabilities when fallback providers lack them", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = new FakeProvider("providerOne", allCapabilities);
-    const providerTwo = new FakeProvider("providerTwo", {
+    const deepseekPrimary = new FakeProvider("deepseekPrimary", allCapabilities);
+    const openrouterFallback = new FakeProvider("openrouterFallback", {
       zeroDataRetention: false,
       disallowPromptTraining: true,
       thinking: true
     });
-    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+    const router = new ChatRouter([deepseekPrimary, openrouterFallback], telemetry);
 
     const result = await router.route({
       modelId: "kimi-k2-6",
       sessionId: "s1",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerOne", "providerTwo"],
+      providerPriority: ["deepseekPrimary", "openrouterFallback"],
       capabilities: {
         zeroDataRetention: true,
         disallowPromptTraining: true
       }
     });
 
-    expect(result.providerId).toBe("providerOne");
+    expect(result.providerId).toBe("deepseekPrimary");
     expect(result.capabilities).toEqual({
       zeroDataRetention: true,
       disallowPromptTraining: true
     });
     expect(result.droppedCapabilities).toEqual([]);
-    expect(providerOne.calls[0]?.capabilities).toEqual({
+    expect(deepseekPrimary.calls[0]?.capabilities).toEqual({
       zeroDataRetention: true,
       disallowPromptTraining: true
     });
-    expect(providerTwo.calls).toHaveLength(0);
+    expect(openrouterFallback.calls).toHaveLength(0);
   });
 
   it("renegotiates capabilities on fallback and drops only unsupported flags", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = new FakeProvider(
-      "providerOne",
+    const deepseekPrimary = new FakeProvider(
+      "deepseekPrimary",
       allCapabilities,
       "retryableFailure"
     );
-    const providerTwo = new FakeProvider("providerTwo", {
+    const openrouterFallback = new FakeProvider("openrouterFallback", {
       zeroDataRetention: false,
       disallowPromptTraining: true,
       thinking: true
     });
-    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+    const router = new ChatRouter([deepseekPrimary, openrouterFallback], telemetry);
 
     const result = await router.route({
       modelId: "kimi-k2-6",
       sessionId: "s1",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerOne", "providerTwo"],
+      providerPriority: ["deepseekPrimary", "openrouterFallback"],
       capabilities: {
         zeroDataRetention: true,
         disallowPromptTraining: true
       }
     });
 
-    expect(result.providerId).toBe("providerTwo");
-    expect(providerOne.calls[0]?.capabilities).toEqual({
+    expect(result.providerId).toBe("openrouterFallback");
+    expect(deepseekPrimary.calls[0]?.capabilities).toEqual({
       zeroDataRetention: true,
       disallowPromptTraining: true
     });
-    expect(providerTwo.calls[0]?.capabilities).toEqual({
+    expect(openrouterFallback.calls[0]?.capabilities).toEqual({
       disallowPromptTraining: true
     });
     expect(result.capabilities).toEqual({
@@ -162,7 +162,7 @@ describe("ChatRouter", () => {
 
   it("drops multiple unsupported capabilities independently for one provider attempt", () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerTwo = new FakeProvider("providerTwo", {
+    const openrouterFallback = new FakeProvider("openrouterFallback", {
       zeroDataRetention: false,
       disallowPromptTraining: true,
       thinking: false
@@ -174,11 +174,11 @@ describe("ChatRouter", () => {
         disallowPromptTraining: true,
         thinking: true
       },
-      providerTwo,
+      openrouterFallback,
       {
         telemetry,
         sessionId: "s1",
-        modelId: "deepseek-flash",
+        modelId: "deepseek-v4-flash",
         attemptIndex: 1
       }
     );
@@ -190,7 +190,7 @@ describe("ChatRouter", () => {
     expect(telemetry.events).toMatchObject([
       {
         type: "capability_dropped",
-        providerId: "providerTwo",
+        providerId: "openrouterFallback",
         capability: "zeroDataRetention",
         metadata: {
           reason: "unsupported_by_provider",
@@ -199,34 +199,34 @@ describe("ChatRouter", () => {
       },
       {
         type: "capability_dropped",
-        providerId: "providerTwo",
+        providerId: "openrouterFallback",
         capability: "thinking"
       }
     ]);
   });
 
-  it("overrides thinking for deepseek-v4-pro on providerTwo", async () => {
+  it("overrides thinking for deepseek-v4-pro on deepseekPrimary", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerTwo = new FakeProvider("providerTwo", allCapabilities);
-    const router = new ChatRouter([providerTwo], telemetry);
+    const deepseekPrimary = new FakeProvider("deepseekPrimary", allCapabilities);
+    const router = new ChatRouter([deepseekPrimary], telemetry);
 
     const result = await router.route({
       modelId: "deepseek-v4-pro",
       sessionId: "s1",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerTwo"],
+      providerPriority: ["deepseekPrimary"],
       capabilities: { thinking: true }
     });
 
     expect(result.capabilities.thinking).toBeUndefined();
-    expect(providerTwo.calls[0]?.capabilities.thinking).toBeUndefined();
+    expect(deepseekPrimary.calls[0]?.capabilities.thinking).toBeUndefined();
     expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toMatchObject([
       {
         modelId: "deepseek-v4-pro",
-        providerId: "providerTwo",
+        providerId: "deepseekPrimary",
         capability: "thinking",
         metadata: {
-          reason: "deepseek-v4-pro on providerTwo must run with thinking disabled",
+          reason: "deepseek-v4-pro on deepseekPrimary must run with thinking disabled",
           source: "model_policy",
           override: "thinking_disabled",
           attemptIndex: 0
@@ -235,51 +235,60 @@ describe("ChatRouter", () => {
     ]);
   });
 
-  it("does not override thinking for deepseek-v4-pro on providerOne", async () => {
+  it("does not override thinking for deepseek-v4-pro on openrouterFallback", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = new FakeProvider("providerOne", allCapabilities);
-    const router = new ChatRouter([providerOne], telemetry);
+    const openrouterFallback = new FakeProvider("openrouterFallback", allCapabilities);
+    const router = new ChatRouter([openrouterFallback], telemetry);
 
     const result = await router.route({
       modelId: "deepseek-v4-pro",
       sessionId: "s2",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerOne"],
+      providerPriority: ["openrouterFallback"],
       capabilities: { thinking: true }
     });
 
     expect(result.capabilities.thinking).toBe(true);
-    expect(providerOne.calls[0]?.capabilities.thinking).toBe(true);
+    expect(openrouterFallback.calls[0]?.capabilities.thinking).toBe(true);
     expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toHaveLength(0);
   });
 
-  it("does not apply the DeepSeek providerTwo override to kimi-k2-6", async () => {
+  it("drops request-time thinking for deepseekPrimary when unsupported", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerTwo = new FakeProvider("providerTwo", allCapabilities);
-    const router = new ChatRouter([providerTwo], telemetry);
+    const deepseekPrimary = new FakeProvider("deepseekPrimary", {
+      ...allCapabilities,
+      thinking: false
+    });
+    const router = new ChatRouter([deepseekPrimary], telemetry);
 
     const result = await router.route({
-      modelId: "kimi-k2-6",
+      modelId: "deepseek-v4-pro",
       sessionId: "s3",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerTwo"],
+      providerPriority: ["deepseekPrimary"],
       capabilities: { thinking: true }
     });
 
-    expect(result.capabilities.thinking).toBe(true);
-    expect(providerTwo.calls[0]?.capabilities.thinking).toBe(true);
-    expect(telemetry.events.filter((event) => event.type === "thinking_overridden")).toHaveLength(0);
+    expect(result.capabilities.thinking).toBeUndefined();
+    expect(deepseekPrimary.calls[0]?.capabilities.thinking).toBeUndefined();
+    expect(telemetry.events).toContainEqual(
+      expect.objectContaining({
+        type: "capability_dropped",
+        providerId: "deepseekPrimary",
+        capability: "thinking"
+      })
+    );
   });
 
   it("emits likely cold then warm cache telemetry for repeated session/model/provider", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = new FakeProvider("providerOne", allCapabilities);
-    const router = new ChatRouter([providerOne], telemetry);
+    const deepseekPrimary = new FakeProvider("deepseekPrimary", allCapabilities);
+    const router = new ChatRouter([deepseekPrimary], telemetry);
     const input = {
       modelId: "kimi-k2-6" as const,
       sessionId: "s1",
       messages: [{ role: "user" as const, content: "hello" }],
-      providerPriority: ["providerOne" as const]
+      providerPriority: ["deepseekPrimary" as const]
     };
 
     await router.route(input);
@@ -291,41 +300,41 @@ describe("ChatRouter", () => {
 
   it("does not switch providers after the first streamed token boundary", async () => {
     const telemetry = new InMemoryTelemetrySink();
-    const providerOne = new FakeProvider(
-      "providerOne",
+    const deepseekPrimary = new FakeProvider(
+      "deepseekPrimary",
       allCapabilities,
       "afterFirstTokenFailure"
     );
-    const providerTwo = new FakeProvider("providerTwo", allCapabilities);
-    const router = new ChatRouter([providerOne, providerTwo], telemetry);
+    const openrouterFallback = new FakeProvider("openrouterFallback", allCapabilities);
+    const router = new ChatRouter([deepseekPrimary, openrouterFallback], telemetry);
 
     await expect(
       router.route({
         modelId: "kimi-k2-6",
         sessionId: "s1",
         messages: [{ role: "user", content: "hello" }],
-        providerPriority: ["providerOne", "providerTwo"],
+        providerPriority: ["deepseekPrimary", "openrouterFallback"],
         streaming: { enabled: true }
       })
     ).rejects.toMatchObject({
       fallbackPhase: "after_first_token"
     });
 
-    expect(providerTwo.calls).toHaveLength(0);
+    expect(openrouterFallback.calls).toHaveLength(0);
     expect(telemetry.events.some((event) => event.type === "provider_fallback")).toBe(false);
   });
 });
 
 describe("session pinning", () => {
   const rawConfig: ProviderRuntimeConfig = {
-    id: "providerOne",
+    id: "deepseekPrimary",
     stickySession: {
       header: "X-Session-Id",
       strategy: "raw"
     }
   };
   const hashConfig: ProviderRuntimeConfig = {
-    id: "providerTwo",
+    id: "openrouterFallback",
     stickySession: {
       header: "X-Routing-Key",
       strategy: "hash"

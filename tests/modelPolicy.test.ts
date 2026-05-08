@@ -18,19 +18,19 @@ const allCapabilities: Required<CapabilityFlags> = {
 };
 
 describe("model policy provider overrides", () => {
-  it("loads the deepseek-v4-pro providerTwo thinking override from policy YAML", () => {
+  it("loads the deepseek-v4-pro deepseekPrimary thinking override from policy YAML", () => {
     const policy = loadModelPolicy("deepseek-v4-pro");
 
     expect(policy.providerOverrides).toEqual([
       {
-        providerId: "providerTwo",
+        providerId: "deepseekPrimary",
         thinking: "disabled",
-        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled"
+        reason: "deepseek-v4-pro on deepseekPrimary must run with thinking disabled"
       }
     ]);
   });
 
-  it("does not apply a hardcoded deepseek-v4-pro providerTwo override without policy config", () => {
+  it("does not apply a hardcoded deepseek-v4-pro deepseekPrimary override without policy config", () => {
     const telemetry = new InMemoryTelemetrySink();
     const policyWithoutOverrides: ModelPolicy = {
       modelId: "deepseek-v4-pro",
@@ -40,7 +40,7 @@ describe("model policy provider overrides", () => {
 
     const capabilities = applyProviderModelOverrides(
       policyWithoutOverrides,
-      fakeProvider("providerTwo"),
+      fakeProvider("deepseekPrimary"),
       { thinking: true },
       { telemetry }
     );
@@ -57,7 +57,7 @@ describe("model policy provider overrides", () => {
     expect(policies.map((policy) => policy.modelId)).toEqual([
       "kimi-k2-6",
       "deepseek-v4-pro",
-      "deepseek-flash"
+      "deepseek-v4-flash"
     ]);
   });
 
@@ -69,7 +69,7 @@ describe("model policy provider overrides", () => {
       effectiveContextTokens: 96000,
       providerOverrides: [
         {
-          providerId: "providerTwo",
+          providerId: "openrouterFallback",
           thinking: "enabled"
         }
       ]
@@ -77,7 +77,7 @@ describe("model policy provider overrides", () => {
 
     const capabilities = applyProviderModelOverrides(
       policy,
-      fakeProvider("providerTwo", {
+      fakeProvider("openrouterFallback", {
         ...allCapabilities,
         thinking: false
       }),
@@ -96,7 +96,7 @@ describe("model policy provider overrides", () => {
       effectiveContextTokens: 96000,
       providerOverrides: [
         {
-          providerId: "providerOne",
+          providerId: "deepseekPrimary",
           thinking: "sometimes"
         }
       ]
@@ -143,11 +143,11 @@ describe("model policy provider overrides", () => {
       effectiveContextTokens: 96000,
       providerOverrides: [
         {
-          providerId: "providerOne",
+          providerId: "deepseekPrimary",
           thinking: "disabled"
         },
         {
-          providerId: "providerOne",
+          providerId: "deepseekPrimary",
           thinking: "enabled"
         }
       ]
@@ -157,7 +157,7 @@ describe("model policy provider overrides", () => {
     expect(summary.warnings).toContainEqual({
       code: "duplicate_provider_override",
       path: "providerOverrides[1].providerId",
-      message: "Duplicate provider override for providerOne; first entry is at providerOverrides[0]."
+      message: "Duplicate provider override for deepseekPrimary; first entry is at providerOverrides[0]."
     });
   });
 });
@@ -168,7 +168,7 @@ function fakeProvider(
 ): ProviderAdapter {
   return {
     id,
-    supportedModels: ["kimi-k2-6", "deepseek-v4-pro", "deepseek-flash"] as CanonicalModelId[],
+    supportedModels: ["kimi-k2-6", "deepseek-v4-pro", "deepseek-v4-flash"] as CanonicalModelId[],
     capabilities,
     async completeChat(_request: ProviderChatRequest): Promise<ProviderChatResponse> {
       return { content: `ok from ${id}` };

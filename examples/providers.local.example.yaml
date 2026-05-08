@@ -5,10 +5,15 @@ providers:
     stickySession:
       header: X-Session-Id
       strategy: raw
+    # Harness capability for this provider in this candidate: thinking: false
     modelSlugs:
       deepseek-v4-pro:
         env: DEEPSEEK_PRIMARY_DEEPSEEK_V4_PRO_SLUG
         default: deepseek-v4-pro
+      # deepseek-v4-flash:
+      #   env: DEEPSEEK_PRIMARY_DEEPSEEK_V4_FLASH_SLUG
+      #   default: deepseek-v4-flash
+
   - id: openrouterFallback
     baseUrlEnv: OPENROUTER_FALLBACK_BASE_URL
     authEnvVar: OPENROUTER_FALLBACK_API_KEY
@@ -25,3 +30,6 @@ providers:
       deepseek-v4-flash:
         env: OPENROUTER_FALLBACK_DEEPSEEK_V4_FLASH_SLUG
         default: deepseek-v4-flash
+
+# Other provider IDs are not accepted by this candidate until the harness owns
+# their provider capabilities and routing boundary explicitly.

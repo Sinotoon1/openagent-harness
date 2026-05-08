@@ -1,3 +1,65 @@
+## oss-agent-harness-mcp v1.0.0-candidate.19
+
+This candidate release adds user-editable provider config loading.
+
+### Added
+
+- `OSS_HARNESS_PROVIDER_CONFIG_PATH` can point at a local provider YAML file.
+- External provider config replaces the bundled provider config; no deep merge is
+  performed in this candidate.
+- External provider config uses the existing strict provider validation and wraps
+  missing file, invalid YAML, and invalid shape failures in clear
+  `ProviderConfigError` messages.
+- Added local provider and `.env` examples under `examples/`.
+- Added local provider config documentation with PowerShell and Claude Code MCP
+  setup examples.
+
+### Preserved
+
+- API key values still come only from environment variables, not YAML.
+- Provider enablement remains gated by configured base URL environment values.
+- No live provider credential checks or provider account management were added.
+- Repair behavior, streaming parser behavior, fallback semantics, telemetry sink
+  behavior, JSONL behavior, security sanitization, context compaction, MCP tool
+  names, schema descriptor behavior, policy behavior, and provider routing
+  semantics are unchanged.
+
+### Validation
+
+- `npm test`: 10 test files passed, 159 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 124 files, 78.5 kB package, 378.8 kB unpacked.
+
+## oss-agent-harness-mcp v1.0.0-candidate.18
+
+This candidate release cleans up logical provider IDs and corrects the DeepSeek
+flash canonical model ID.
+
+### Changed
+
+- Renamed `providerOne` to `deepseekPrimary`.
+- Renamed the primary DeepSeek env vars to `DEEPSEEK_PRIMARY_BASE_URL` and
+  `DEEPSEEK_PRIMARY_API_KEY`.
+- Renamed the fallback placeholder provider to `openrouterFallback`.
+- Corrected `deepseek-flash` to `deepseek-v4-flash`; the old model ID is not
+  kept as a broad compatibility alias.
+- `deepseekPrimary` now advertises only verified `deepseek-v4-pro` support and
+  does not map `kimi-k2-6` or unverified `deepseek-v4-flash`.
+- `deepseekPrimary` request-time thinking capability is false, reflecting local
+  smoke-test HTTP 400 behavior when thinking is sent.
+
+### Preserved
+
+- No MCP tool names were changed.
+- Repair behavior, streaming parser behavior, fallback semantics, telemetry sink
+  behavior, JSONL behavior, security sanitization, context compaction, schema
+  descriptor behavior, and policy suggestion behavior are unchanged.
+
+### Validation
+
+- `npm test`: 10 test files passed, 149 tests passed.
+- `npm run build`: passed.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.17
 
 This candidate release shapes successful `oss_chat` responses so raw provider
@@ -176,14 +238,14 @@ This candidate release externalizes model/provider-specific quirks into model po
 
 ### Changed
 
-- Moved the DeepSeek v4 Pro + providerTwo thinking override out of hardcoded router/capability logic.
+- Moved the DeepSeek v4 Pro + openrouterFallback thinking override out of hardcoded router/capability logic.
 - The override now lives in `src/policies/deepseek-v4-pro.yaml`.
 - Provider overrides are loaded through the model policy loader.
 - Policy overrides are applied after per-attempt capability negotiation.
 
 ### Preserved
 
-- DeepSeek v4 Pro + providerTwo still runs with thinking disabled.
+- DeepSeek v4 Pro + openrouterFallback still runs with thinking disabled.
 - Other DeepSeek providers are unaffected.
 - Other models are unaffected.
 - Per-attempt capability negotiation remains unchanged.

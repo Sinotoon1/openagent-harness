@@ -60,38 +60,43 @@ Canonical model IDs:
 
 - `kimi-k2-6`
 - `deepseek-v4-pro`
-- `deepseek-flash`
+- `deepseek-v4-flash`
 
 ## Configuration
 
-Both providers are OpenAI-compatible HTTP adapters in this candidate. Provider
-IDs are placeholders until their environment variables point at real
-OpenAI-compatible services.
+Both providers are OpenAI-compatible HTTP adapters in this candidate.
+`deepseekPrimary` is the logical DeepSeek provider slot verified for
+`deepseek-v4-pro`. `openrouterFallback` is a clearer fallback placeholder until
+its environment variables point at a real OpenAI-compatible service.
 
 ```bash
-PROVIDER_ONE_BASE_URL=https://provider-one.example/v1
-PROVIDER_ONE_API_KEY=...
-PROVIDER_TWO_BASE_URL=https://provider-two.example/v1
-PROVIDER_TWO_API_KEY=...
+DEEPSEEK_PRIMARY_BASE_URL=https://deepseek-primary.example/v1
+DEEPSEEK_PRIMARY_API_KEY=...
+OPENROUTER_FALLBACK_BASE_URL=https://openrouter-fallback.example/v1
+OPENROUTER_FALLBACK_API_KEY=...
 ```
 
 Optional slug overrides:
 
 ```bash
-PROVIDER_ONE_KIMI_K2_6_SLUG=...
-PROVIDER_ONE_DEEPSEEK_V4_PRO_SLUG=...
-PROVIDER_ONE_DEEPSEEK_FLASH_SLUG=...
-PROVIDER_TWO_KIMI_K2_6_SLUG=...
-PROVIDER_TWO_DEEPSEEK_V4_PRO_SLUG=...
-PROVIDER_TWO_DEEPSEEK_FLASH_SLUG=...
+DEEPSEEK_PRIMARY_DEEPSEEK_V4_PRO_SLUG=...
+OPENROUTER_FALLBACK_KIMI_K2_6_SLUG=...
+OPENROUTER_FALLBACK_DEEPSEEK_V4_PRO_SLUG=...
+OPENROUTER_FALLBACK_DEEPSEEK_V4_FLASH_SLUG=...
 ```
 
 Provider metadata lives in `src/providers/providers.yaml` and is copied to
 `dist/providers/providers.yaml` during build. Model policies live in
 `src/policies/*.yaml` and are copied to `dist/policies` during build.
+Set `OSS_HARNESS_PROVIDER_CONFIG_PATH` to load a user-editable provider config
+file instead of the bundled provider metadata. Do not edit
+`dist/providers/providers.yaml` directly; it is generated build output.
 
 See [docs/provider-matrix.md](docs/provider-matrix.md) for manual provider
-smoke-test guidance.
+smoke-test guidance. Latest local MCP smoke-test results are recorded in
+[docs/mcp-smoke-test-results.md](docs/mcp-smoke-test-results.md). Local provider
+config examples and PowerShell setup are in
+[docs/provider-local-config.md](docs/provider-local-config.md).
 
 ## Usage Examples
 
@@ -99,10 +104,10 @@ smoke-test guidance.
 
 ```json
 {
-  "modelId": "kimi-k2-6",
+  "modelId": "deepseek-v4-pro",
   "sessionId": "dev-session-1",
   "messages": [{ "role": "user", "content": "Summarize this change." }],
-  "providerPriority": ["providerOne", "providerTwo"],
+  "providerPriority": ["deepseekPrimary", "openrouterFallback"],
   "capabilities": { "zeroDataRetention": true }
 }
 ```
@@ -177,8 +182,8 @@ MCP client examples for Codex CLI, Claude Code, VS Code, and OpenCode are in
 
 This package exposes the `oss-agent-harness-mcp` bin at `dist/server.js`.
 Published packages should include built `dist`, copied policy YAML, copied
-provider config YAML, `README.md`, `CHANGELOG.md`, and useful docs. Do not
-publish directly from this repository without running:
+provider config YAML, examples, `README.md`, `CHANGELOG.md`, and useful docs. Do
+not publish directly from this repository without running:
 
 ```bash
 npm test

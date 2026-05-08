@@ -6,12 +6,12 @@ import { OpenAICompatibleProviderAdapter } from "./openAiCompatible.js";
 import type { ProviderAdapter } from "./types.js";
 
 const providerCapabilities: Record<ProviderId, Required<CapabilityFlags>> = {
-  providerOne: {
+  deepseekPrimary: {
     zeroDataRetention: true,
     disallowPromptTraining: true,
-    thinking: true
+    thinking: false
   },
-  providerTwo: {
+  openrouterFallback: {
     zeroDataRetention: true,
     disallowPromptTraining: false,
     thinking: true
@@ -51,9 +51,13 @@ function resolveModelSlugs(
   env: NodeJS.ProcessEnv
 ) {
   return Object.fromEntries(
-    canonicalModelIds.map((modelId) => {
+    canonicalModelIds.flatMap((modelId) => {
       const slugConfig = providerConfig.modelSlugs[modelId];
-      return [modelId, slugConfig.env ? env[slugConfig.env] ?? slugConfig.default : slugConfig.default];
+      if (!slugConfig) {
+        return [];
+      }
+
+      return [[modelId, slugConfig.env ? env[slugConfig.env] ?? slugConfig.default : slugConfig.default]];
     })
   );
 }

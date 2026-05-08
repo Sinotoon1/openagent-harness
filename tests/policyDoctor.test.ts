@@ -4,38 +4,42 @@ import { runPolicyDoctor } from "../src/diagnostics/policyDoctor.js";
 import { loadAllModelPolicies } from "../src/policies/loader.js";
 import { InMemoryTelemetrySink } from "../src/telemetry/memory.js";
 
-const validProvider = (id: "providerOne" | "providerTwo") => ({
+const validProvider = (id: "deepseekPrimary" | "openrouterFallback") => ({
   id,
-  baseUrlEnv: id === "providerOne" ? "PROVIDER_ONE_BASE_URL" : "PROVIDER_TWO_BASE_URL",
-  authEnvVar: id === "providerOne" ? "PROVIDER_ONE_API_KEY" : "PROVIDER_TWO_API_KEY",
+  baseUrlEnv:
+    id === "deepseekPrimary" ? "DEEPSEEK_PRIMARY_BASE_URL" : "OPENROUTER_FALLBACK_BASE_URL",
+  authEnvVar:
+    id === "deepseekPrimary" ? "DEEPSEEK_PRIMARY_API_KEY" : "OPENROUTER_FALLBACK_API_KEY",
   stickySession: {
-    header: id === "providerOne" ? "X-Session-Id" : "X-Routing-Key",
-    strategy: id === "providerOne" ? "raw" : "hash"
+    header: id === "deepseekPrimary" ? "X-Session-Id" : "X-Routing-Key",
+    strategy: id === "deepseekPrimary" ? "raw" : "hash"
   },
-  modelSlugs: {
-    "kimi-k2-6": {
-      env: id === "providerOne" ? "PROVIDER_ONE_KIMI_K2_6_SLUG" : "PROVIDER_TWO_KIMI_K2_6_SLUG",
-      default: "kimi-k2-6"
-    },
-    "deepseek-v4-pro": {
-      env:
-        id === "providerOne"
-          ? "PROVIDER_ONE_DEEPSEEK_V4_PRO_SLUG"
-          : "PROVIDER_TWO_DEEPSEEK_V4_PRO_SLUG",
-      default: "deepseek-v4-pro"
-    },
-    "deepseek-flash": {
-      env:
-        id === "providerOne"
-          ? "PROVIDER_ONE_DEEPSEEK_FLASH_SLUG"
-          : "PROVIDER_TWO_DEEPSEEK_FLASH_SLUG",
-      default: "deepseek-flash"
-    }
-  }
+  modelSlugs:
+    id === "deepseekPrimary"
+      ? {
+          "deepseek-v4-pro": {
+            env: "DEEPSEEK_PRIMARY_DEEPSEEK_V4_PRO_SLUG",
+            default: "deepseek-v4-pro"
+          }
+        }
+      : {
+          "kimi-k2-6": {
+            env: "OPENROUTER_FALLBACK_KIMI_K2_6_SLUG",
+            default: "kimi-k2-6"
+          },
+          "deepseek-v4-pro": {
+            env: "OPENROUTER_FALLBACK_DEEPSEEK_V4_PRO_SLUG",
+            default: "deepseek-v4-pro"
+          },
+          "deepseek-v4-flash": {
+            env: "OPENROUTER_FALLBACK_DEEPSEEK_V4_FLASH_SLUG",
+            default: "deepseek-v4-flash"
+          }
+        }
 });
 
 const validProviderConfig = () => ({
-  providers: [validProvider("providerOne"), validProvider("providerTwo")]
+  providers: [validProvider("deepseekPrimary"), validProvider("openrouterFallback")]
 });
 
 const basePolicy = {
@@ -52,8 +56,8 @@ describe("policy doctor", () => {
         policies: loadAllModelPolicies(),
         providerConfig: validProviderConfig(),
         env: {
-          PROVIDER_ONE_BASE_URL: "https://provider-one.example/v1",
-          PROVIDER_TWO_BASE_URL: "https://provider-two.example/v1"
+          DEEPSEEK_PRIMARY_BASE_URL: "https://deepseek-primary.example/v1",
+          OPENROUTER_FALLBACK_BASE_URL: "https://openrouter-fallback.example/v1"
         }
       }
     );
@@ -82,8 +86,8 @@ describe("policy doctor", () => {
           {
             ...basePolicy,
             providerOverrides: [
-              { providerId: "providerOne", thinking: "disabled" },
-              { providerId: "providerOne", thinking: "enabled" }
+              { providerId: "deepseekPrimary", thinking: "disabled" },
+              { providerId: "deepseekPrimary", thinking: "enabled" }
             ]
           }
         ]
@@ -95,7 +99,7 @@ describe("policy doctor", () => {
         severity: "warning",
         code: "duplicate_provider_override",
         modelId: "kimi-k2-6",
-        providerId: "providerOne"
+        providerId: "deepseekPrimary"
       })
     );
   });
@@ -180,12 +184,12 @@ describe("policy doctor", () => {
         expect.objectContaining({
           severity: "info",
           code: "provider_base_url_env_missing",
-          providerId: "providerOne"
+          providerId: "deepseekPrimary"
         }),
         expect.objectContaining({
           severity: "info",
           code: "provider_base_url_env_missing",
-          providerId: "providerTwo"
+          providerId: "openrouterFallback"
         })
       ])
     );
@@ -249,7 +253,7 @@ describe("policy doctor", () => {
         repairs: ["bareStringToArray", "token=raw-repair-token"],
         apiKey: "raw-api-key-value",
         env: {
-          PROVIDER_ONE_BASE_URL: "https://secret-provider.example/v1"
+          DEEPSEEK_PRIMARY_BASE_URL: "https://secret-provider.example/v1"
         },
         messages: [{ role: "user", content: "raw prompt content" }]
       }
@@ -262,7 +266,7 @@ describe("policy doctor", () => {
           policies: [basePolicy],
           providerConfig: validProviderConfig(),
           env: {
-            PROVIDER_ONE_BASE_URL: "https://secret-provider.example/v1"
+            DEEPSEEK_PRIMARY_BASE_URL: "https://secret-provider.example/v1"
           },
           telemetry
         }

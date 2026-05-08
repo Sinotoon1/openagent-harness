@@ -343,7 +343,7 @@ function diagnoseDeepSeekPolicyOverride(
   const hasPolicyBackedOverride = overrides.some((override) => {
     return (
       isRecord(override) &&
-      override.providerId === "providerTwo" &&
+      override.providerId === "deepseekPrimary" &&
       override.thinking === "disabled"
     );
   });
@@ -353,9 +353,9 @@ function diagnoseDeepSeekPolicyOverride(
       {
         severity: "info",
         code: "deepseek_override_policy_backed",
-        message: "DeepSeek v4 Pro providerTwo thinking override is present in model policy.",
+        message: "DeepSeek v4 Pro deepseekPrimary thinking override is present in model policy.",
         modelId: "deepseek-v4-pro",
-        providerId: "providerTwo",
+        providerId: "deepseekPrimary",
         recommendation: "Keep this quirk policy-backed; do not reintroduce hardcoded routing behavior."
       }
     ];
@@ -363,13 +363,13 @@ function diagnoseDeepSeekPolicyOverride(
 
   return [
     {
-      severity: "warning",
-      code: "deepseek_override_missing",
-      message: "DeepSeek v4 Pro providerTwo thinking override was not found in model policy.",
-      modelId: "deepseek-v4-pro",
-      providerId: "providerTwo",
-      recommendation: "Keep the provider-specific thinking override in policy YAML if the quirk still applies."
-    }
+    severity: "warning",
+    code: "deepseek_override_missing",
+    message: "DeepSeek v4 Pro deepseekPrimary thinking override was not found in model policy.",
+    modelId: "deepseek-v4-pro",
+    providerId: "deepseekPrimary",
+    recommendation: "Keep the provider-specific thinking override in policy YAML if the quirk still applies."
+  }
   ];
 }
 

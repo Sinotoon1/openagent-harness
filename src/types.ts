@@ -1,12 +1,12 @@
 export const canonicalModelIds = [
   "kimi-k2-6",
   "deepseek-v4-pro",
-  "deepseek-flash"
+  "deepseek-v4-flash"
 ] as const;
 
 export type CanonicalModelId = (typeof canonicalModelIds)[number];
 
-export const providerIds = ["providerOne", "providerTwo"] as const;
+export const providerIds = ["deepseekPrimary", "openrouterFallback"] as const;
 
 export type ProviderId = (typeof providerIds)[number];
 

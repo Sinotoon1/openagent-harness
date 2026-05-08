@@ -133,18 +133,18 @@ describe("telemetry sinks", () => {
   it("records per-attempt capability negotiation through the JSONL sink", async () => {
     const filePath = tempTelemetryPath();
     const sink = new JsonlTelemetrySink(filePath);
-    const providerOne = new JsonlFakeProvider("providerOne", {
+    const deepseekPrimary = new JsonlFakeProvider("deepseekPrimary", {
       zeroDataRetention: false,
       disallowPromptTraining: true,
       thinking: true
     });
-    const router = new ChatRouter([providerOne], sink);
+    const router = new ChatRouter([deepseekPrimary], sink);
 
     const result = await router.route({
       modelId: "kimi-k2-6",
       sessionId: "jsonl-capability-session",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerOne"],
+      providerPriority: ["deepseekPrimary"],
       capabilities: {
         zeroDataRetention: true,
         disallowPromptTraining: true
@@ -152,13 +152,13 @@ describe("telemetry sinks", () => {
     });
     const negotiated = queryTelemetry(sink, {
       type: "capability_negotiated",
-      providerId: "providerOne",
+      providerId: "deepseekPrimary",
       includeMetadata: true,
       limit: 10
     });
     const dropped = queryTelemetry(sink, {
       type: "capability_dropped",
-      providerId: "providerOne",
+      providerId: "deepseekPrimary",
       includeMetadata: true,
       limit: 10
     });
@@ -176,7 +176,7 @@ describe("telemetry sinks", () => {
     });
     expect(dropped.events[0]).toMatchObject({
       capability: "zeroDataRetention",
-      providerId: "providerOne",
+      providerId: "deepseekPrimary",
       metadata: {
         reason: "unsupported_by_provider",
         attemptIndex: 0
@@ -187,21 +187,21 @@ describe("telemetry sinks", () => {
   it("records thinking_overridden telemetry through the JSONL sink", async () => {
     const filePath = tempTelemetryPath();
     const sink = new JsonlTelemetrySink(filePath);
-    const providerTwo = new JsonlFakeProvider("providerTwo", allCapabilities);
-    const router = new ChatRouter([providerTwo], sink);
+    const deepseekPrimary = new JsonlFakeProvider("deepseekPrimary", allCapabilities);
+    const router = new ChatRouter([deepseekPrimary], sink);
 
     const result = await router.route({
       modelId: "deepseek-v4-pro",
       sessionId: "jsonl-thinking-session",
       messages: [{ role: "user", content: "hello" }],
-      providerPriority: ["providerTwo"],
+      providerPriority: ["deepseekPrimary"],
       capabilities: {
         thinking: true
       }
     });
     const overridden = queryTelemetry(sink, {
       type: "thinking_overridden",
-      providerId: "providerTwo",
+      providerId: "deepseekPrimary",
       includeMetadata: true,
       limit: 10
     });
@@ -211,10 +211,10 @@ describe("telemetry sinks", () => {
     expect(overridden.events[0]).toMatchObject({
       type: "thinking_overridden",
       modelId: "deepseek-v4-pro",
-      providerId: "providerTwo",
+      providerId: "deepseekPrimary",
       capability: "thinking",
       metadata: {
-        reason: "deepseek-v4-pro on providerTwo must run with thinking disabled",
+        reason: "deepseek-v4-pro on deepseekPrimary must run with thinking disabled",
         source: "model_policy",
         override: "thinking_disabled",
         attemptIndex: 0
@@ -384,7 +384,7 @@ class JsonlFakeProvider implements ProviderAdapter {
   readonly supportedModels: CanonicalModelId[] = [
     "kimi-k2-6",
     "deepseek-v4-pro",
-    "deepseek-flash"
+    "deepseek-v4-flash"
   ];
   readonly calls: ProviderChatRequest[] = [];
 

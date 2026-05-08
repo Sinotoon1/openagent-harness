@@ -26,9 +26,9 @@ Provider overrides intentionally support only a small capability policy shape:
 
 ```yaml
 providerOverrides:
-  - providerId: providerTwo
+  - providerId: deepseekPrimary
     thinking: disabled
-    reason: deepseek-v4-pro on providerTwo must run with thinking disabled
+    reason: deepseek-v4-pro on deepseekPrimary must run with thinking disabled
 ```
 
 `thinking` may be `enabled`, `disabled`, or `unchanged`. Unsupported capability
