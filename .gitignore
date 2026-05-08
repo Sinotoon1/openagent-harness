@@ -3,3 +3,8 @@ dist/
 coverage/
 .env
 *.log
+.env.local
+providers.local.yaml
+*.jsonl
+package/
+*.tgz
