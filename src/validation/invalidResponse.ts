@@ -1,3 +1,5 @@
+import { telemetryEvent } from "../constants/telemetryEvents.js";
+
 type IssuePathSegment = string | number | symbol;
 
 export interface IssueLike {
@@ -17,7 +19,7 @@ export interface StandardInvalidToolResponse {
   modelMessage: string;
   issues: SummarizedIssue[];
   error: {
-    code: "tool_input_invalid";
+    code: typeof telemetryEvent.toolInputInvalid;
     toolName: string;
     modelMessage: string;
     issues: SummarizedIssue[];
@@ -42,7 +44,7 @@ export function makeInvalidToolResponse(options: {
     modelMessage,
     issues,
     error: {
-      code: "tool_input_invalid",
+      code: telemetryEvent.toolInputInvalid,
       toolName: options.toolName,
       modelMessage,
       issues,

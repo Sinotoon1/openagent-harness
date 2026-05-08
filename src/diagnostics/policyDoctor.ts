@@ -1,5 +1,7 @@
 import { parseProviderRuntimeConfigs, loadProviderRuntimeConfigs } from "../providers/config.js";
 import type { ProviderRuntimeConfigMap } from "../providers/config.js";
+import { stickySessionStrategies } from "../constants/provider.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 import { loadAllModelPolicies, loadModelPolicy } from "../policies/loader.js";
 import { modelPolicySchema, repairNames } from "../policies/types.js";
 import { createReviewableRepairPolicySuggestions } from "../telemetry/repairPolicySuggestions.js";
@@ -57,7 +59,7 @@ const severityRank: Record<PolicyDoctorSeverity, number> = {
 const knownRepairNames = new Set<string>(repairNames);
 const knownProviderIds = new Set<string>(providerIds);
 const knownModelIds = new Set<string>(canonicalModelIds);
-const knownStickySessionStrategies = new Set(["raw", "hash"]);
+const knownStickySessionStrategies = new Set<string>(stickySessionStrategies);
 const envVarNamePattern = /^[A-Z_][A-Z0-9_]*$/;
 const orderedThresholdKeys = [
   "dropDeadToolCalls",
@@ -562,7 +564,7 @@ function diagnoseTelemetry(
   }
 
   const repairedWindow = queryTelemetry(telemetry, {
-    type: "tool_input_repaired",
+    type: telemetryEvent.toolInputRepaired,
     ...(modelId ? { modelId } : {}),
     includeMetadata: true,
     limit: 200

@@ -1,5 +1,6 @@
 import type { CapabilityFlags, ProviderId } from "../types.js";
 import { canonicalModelIds, providerIds } from "../types.js";
+import { capabilityName } from "../constants/capabilities.js";
 import type { ProviderRuntimeConfigMap, ProviderRuntimeDefinition } from "./config.js";
 import { loadProviderRuntimeConfigs } from "./config.js";
 import { OpenAICompatibleProviderAdapter } from "./openAiCompatible.js";
@@ -7,14 +8,14 @@ import type { ProviderAdapter } from "./types.js";
 
 const providerCapabilities: Record<ProviderId, Required<CapabilityFlags>> = {
   deepseekPrimary: {
-    zeroDataRetention: true,
-    disallowPromptTraining: true,
-    thinking: false
+    [capabilityName.zeroDataRetention]: true,
+    [capabilityName.disallowPromptTraining]: true,
+    [capabilityName.thinking]: false
   },
   openrouterFallback: {
-    zeroDataRetention: true,
-    disallowPromptTraining: false,
-    thinking: true
+    [capabilityName.zeroDataRetention]: true,
+    [capabilityName.disallowPromptTraining]: false,
+    [capabilityName.thinking]: true
   }
 };
 

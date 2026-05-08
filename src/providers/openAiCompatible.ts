@@ -4,6 +4,8 @@ import type {
   FallbackPhase,
   ProviderId
 } from "../types.js";
+import { capabilityName } from "../constants/capabilities.js";
+import { fallbackPhase as fallbackPhaseName } from "../constants/fallback.js";
 import type { ProviderRuntimeConfig } from "./config.js";
 import { ProviderError, isRetryableStatus } from "./providerError.js";
 import { buildStickySessionHeaders } from "./session.js";
@@ -82,11 +84,11 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
       headers.Authorization = `Bearer ${this.apiKey}`;
     }
 
-    if (request.capabilities.zeroDataRetention) {
+    if (request.capabilities[capabilityName.zeroDataRetention]) {
       headers["X-Zero-Data-Retention"] = "true";
     }
 
-    if (request.capabilities.disallowPromptTraining) {
+    if (request.capabilities[capabilityName.disallowPromptTraining]) {
       headers["X-Disallow-Prompt-Training"] = "true";
     }
 
@@ -105,7 +107,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
       body.max_tokens = request.maxTokens;
     }
 
-    if (request.capabilities.thinking) {
+    if (request.capabilities[capabilityName.thinking]) {
       body.thinking = { enabled: true };
     }
 
@@ -127,12 +129,17 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     if (!response.ok) {
       const retryable = isRetryableStatus(response.status);
       throw new ProviderError(
-        safeHttpErrorMessage(this.id, response.status, "before_first_token", retryable),
+        safeHttpErrorMessage(
+          this.id,
+          response.status,
+          fallbackPhaseName.beforeFirstToken,
+          retryable
+        ),
         {
           retryable,
           status: response.status,
           providerId: this.id,
-          fallbackPhase: "before_first_token"
+          fallbackPhase: fallbackPhaseName.beforeFirstToken
         }
       );
     }
@@ -164,7 +171,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
       throw new ProviderError(`Provider ${this.id} returned no stream body`, {
         retryable: true,
         providerId: this.id,
-        fallbackPhase: "before_first_token"
+        fallbackPhase: fallbackPhaseName.beforeFirstToken
       });
     }
 
@@ -305,18 +312,18 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     meaningfulOutputStarted: boolean,
     partialContent: string
   ): ProviderError {
-    const fallbackPhase: FallbackPhase = meaningfulOutputStarted
-      ? "after_first_token"
-      : "before_first_token";
+    const phase: FallbackPhase = meaningfulOutputStarted
+      ? fallbackPhaseName.afterFirstToken
+      : fallbackPhaseName.beforeFirstToken;
     const message =
-      fallbackPhase === "after_first_token"
+      phase === fallbackPhaseName.afterFirstToken
         ? `Provider ${this.id} stream failed after assistant output started; partial output cannot be merged with another provider`
         : `Provider ${this.id} stream failed before assistant output started`;
 
     return new ProviderError(message, {
       retryable: true,
       providerId: this.id,
-      fallbackPhase,
+      fallbackPhase: phase,
       cause: error,
       partialContent
     });

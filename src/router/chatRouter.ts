@@ -1,5 +1,7 @@
 import type { ProviderAdapter } from "../providers/types.js";
 import { ProviderError } from "../providers/providerError.js";
+import { fallbackPhase } from "../constants/fallback.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 import { loadModelPolicy } from "../policies/loader.js";
 import { sanitizeForResponse, sanitizeProviderPreview } from "../security/sanitize.js";
 import type { TelemetrySink } from "../telemetry/types.js";
@@ -49,7 +51,7 @@ export class ChatRouter {
       );
 
       this.telemetry.record({
-        type: "capability_negotiated",
+        type: telemetryEvent.capabilityNegotiated,
         sessionId: input.sessionId,
         modelId: input.modelId,
         providerId: provider.id,
@@ -66,7 +68,7 @@ export class ChatRouter {
         input.sessionId
       );
       this.telemetry.record({
-        type: likelyWarm ? "cache_likely_warm" : "cache_likely_cold",
+        type: likelyWarm ? telemetryEvent.cacheLikelyWarm : telemetryEvent.cacheLikelyCold,
         sessionId: input.sessionId,
         modelId: input.modelId,
         providerId: provider.id
@@ -103,7 +105,7 @@ export class ChatRouter {
         const nextProvider = selectedProviders[index + 1];
         const canFallback =
           providerError.retryable &&
-          providerError.fallbackPhase === "before_first_token" &&
+          providerError.fallbackPhase === fallbackPhase.beforeFirstToken &&
           nextProvider !== undefined;
 
         if (!canFallback) {
@@ -111,7 +113,7 @@ export class ChatRouter {
         }
 
         this.telemetry.record({
-          type: "provider_fallback",
+          type: telemetryEvent.providerFallback,
           sessionId: input.sessionId,
           modelId: input.modelId,
           providerId: provider.id,
@@ -237,7 +239,7 @@ function toProviderError(error: unknown, providerId: ProviderId): ProviderError 
     {
       retryable: false,
       providerId,
-      fallbackPhase: "before_first_token",
+      fallbackPhase: fallbackPhase.beforeFirstToken,
       cause: error
     }
   );

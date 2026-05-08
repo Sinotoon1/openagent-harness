@@ -1,5 +1,6 @@
 import type { ProviderId } from "../types.js";
 import type { FallbackPhase } from "../types.js";
+import { fallbackPhase } from "../constants/fallback.js";
 
 export class ProviderError extends Error {
   readonly retryable: boolean;
@@ -24,7 +25,7 @@ export class ProviderError extends Error {
     this.retryable = options.retryable;
     this.status = options.status;
     this.providerId = options.providerId;
-    this.fallbackPhase = options.fallbackPhase ?? "before_first_token";
+    this.fallbackPhase = options.fallbackPhase ?? fallbackPhase.beforeFirstToken;
     this.partialContent = options.partialContent;
   }
 }

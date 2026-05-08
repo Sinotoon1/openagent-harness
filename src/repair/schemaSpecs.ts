@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mcpToolName } from "../constants/toolNames.js";
 import { canonicalModelIds, providerIds } from "../types.js";
 
 export const capabilityFlagsSchema = z
@@ -72,7 +73,7 @@ export const pathBatchInputSchema = z
   })
   .strict();
 
-export const repairSchemaNames = ["oss_chat", "readFile", "writeFile", "pathBatch"] as const;
+export const repairSchemaNames = [mcpToolName.ossChat, "readFile", "writeFile", "pathBatch"] as const;
 
 export type RepairSchemaName = (typeof repairSchemaNames)[number];
 
@@ -87,8 +88,8 @@ export interface RepairSchemaSpec {
 }
 
 export const repairSchemaSpecs: Record<RepairSchemaName, RepairSchemaSpec> = {
-  oss_chat: {
-    name: "oss_chat",
+  [mcpToolName.ossChat]: {
+    name: mcpToolName.ossChat,
     schema: ossChatInputSchema,
     arrayFields: ["messages", "providerPriority"],
     optionalFields: [

@@ -1,30 +1,20 @@
 import { canonicalModelIds, providerIds } from "../types.js";
+import { fallbackPhase as fallbackPhaseName, fallbackPhases } from "../constants/fallback.js";
+import { repairNames } from "../constants/repairNames.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
+import { mcpToolNames } from "../constants/toolNames.js";
 import type { TelemetryEventType } from "./types.js";
 import { queryTelemetry, type TelemetryQueryResult } from "./query.js";
 import type { TelemetrySink } from "./types.js";
 
 const knownToolNames = new Set([
-  "oss_chat",
-  "repair_tool_input",
-  "compact_context",
-  "get_model_policy",
-  "inspect_model_policies",
-  "record_eval_event",
-  "query_telemetry",
-  "get_harness_stats",
-  "suggest_repair_policy",
+  ...mcpToolNames,
   "readFile",
   "writeFile",
   "pathBatch"
 ]);
 
-const knownRepairNames = new Set([
-  "stripNullOptional",
-  "emptyObjectToArray",
-  "parseJsonArrayString",
-  "bareStringToArray",
-  "markdownPathAutolinkUnwrap"
-]);
+const knownRepairNames = new Set<string>(repairNames);
 
 const contextModes = new Set([
   "drop_dead_tool_calls",
@@ -32,7 +22,7 @@ const contextModes = new Set([
   "summarize_old_context"
 ]);
 
-const fallbackPhases = new Set(["before_first_token", "after_first_token"]);
+const knownFallbackPhases = new Set<string>(fallbackPhases);
 
 export interface HarnessStatsInput {
   modelId?: string;
@@ -148,10 +138,10 @@ function summarizeTelemetryWindow(
     }
 
     switch (event.type) {
-      case "tool_input_invalid":
+      case telemetryEvent.toolInputInvalid:
         invalid += 1;
         break;
-      case "tool_input_repaired":
+      case telemetryEvent.toolInputRepaired:
         repaired += 1;
         increment(repairsByModel, modelId ?? "<unknown>");
         increment(repairsByTool, safeToolName(event.toolName));
@@ -159,30 +149,30 @@ function summarizeTelemetryWindow(
           increment(repairsByRepair, repair);
         }
         break;
-      case "tool_input_normalized":
+      case telemetryEvent.toolInputNormalized:
         normalized += 1;
         break;
-      case "provider_fallback": {
+      case telemetryEvent.providerFallback: {
         fallbacks += 1;
         const phase = safeFallbackPhase(metadata.fallbackPhase);
         if (options.includeProviders) {
           increment(routingByProvider, providerId ?? safeProviderId(metadata.fromProvider) ?? "<unknown>");
         }
         increment(routingByPhase, phaseKey(phase));
-        if (phase === "before_first_token") {
+        if (phase === fallbackPhaseName.beforeFirstToken) {
           failuresBeforeFirstToken += 1;
-        } else if (phase === "after_first_token") {
+        } else if (phase === fallbackPhaseName.afterFirstToken) {
           failuresAfterFirstToken += 1;
         }
         break;
       }
-      case "cache_likely_warm":
+      case telemetryEvent.cacheLikelyWarm:
         likelyWarm += 1;
         break;
-      case "cache_likely_cold":
+      case telemetryEvent.cacheLikelyCold:
         likelyCold += 1;
         break;
-      case "context_compacted": {
+      case telemetryEvent.contextCompacted: {
         compactions += 1;
         increment(contextByMode, safeContextMode(metadata.strategy));
         break;
@@ -294,14 +284,14 @@ function safeRepairNames(metadata: Record<string, unknown>): string[] {
 }
 
 function safeFallbackPhase(value: unknown): string {
-  return typeof value === "string" && fallbackPhases.has(value) ? value : "<unknown>";
+  return typeof value === "string" && knownFallbackPhases.has(value) ? value : "<unknown>";
 }
 
 function phaseKey(phase: string): string {
-  if (phase === "before_first_token") {
+  if (phase === fallbackPhaseName.beforeFirstToken) {
     return "beforeFirstToken";
   }
-  if (phase === "after_first_token") {
+  if (phase === fallbackPhaseName.afterFirstToken) {
     return "afterFirstToken";
   }
   return "<unknown>";
@@ -320,9 +310,9 @@ function classifyStreaming(metadata: Record<string, unknown>) {
   return {
     success: metadata.streamingSuccess === true || status === "streaming_success" || status === "success" ? 1 : 0,
     failuresBeforeFirstToken:
-      metadata.streamingFailure === true && fallbackPhase === "before_first_token" ? 1 : 0,
+      metadata.streamingFailure === true && fallbackPhase === fallbackPhaseName.beforeFirstToken ? 1 : 0,
     failuresAfterFirstToken:
-      metadata.streamingFailure === true && fallbackPhase === "after_first_token" ? 1 : 0,
+      metadata.streamingFailure === true && fallbackPhase === fallbackPhaseName.afterFirstToken ? 1 : 0,
     malformed: metadata.malformed === true || status === "malformed" ? 1 : 0,
     empty: metadata.empty === true || status === "empty" ? 1 : 0,
     incomplete: metadata.incomplete === true || status === "incomplete" ? 1 : 0

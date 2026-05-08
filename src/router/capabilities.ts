@@ -3,7 +3,8 @@ import type {
   CapabilityName,
   ProviderId
 } from "../types.js";
-import { capabilityNames } from "../types.js";
+import { capabilityName, capabilityNames } from "../constants/capabilities.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 import type { ModelPolicy, ProviderModelOverride } from "../policies/types.js";
 import type { TelemetrySink } from "../telemetry/types.js";
 import type { ProviderAdapter } from "../providers/types.js";
@@ -38,7 +39,7 @@ export function negotiateCapabilities(
 
     droppedCapabilities.push(capability);
     metadata.telemetry?.record({
-      type: "capability_dropped",
+      type: telemetryEvent.capabilityDropped,
       sessionId: metadata.sessionId,
       modelId: metadata.modelId,
       providerId: provider.id,
@@ -78,7 +79,7 @@ export function applyProviderModelOverrides(
   }
 
   if (override.thinking === "enabled" && provider.capabilities.thinking && !capabilities.thinking) {
-    const next = { ...capabilities, thinking: true };
+    const next = { ...capabilities, [capabilityName.thinking]: true };
     recordThinkingOverride(modelPolicy, provider.id, override, metadata);
     return next;
   }
@@ -97,11 +98,11 @@ function recordThinkingOverride(
   }
 ): void {
   metadata.telemetry?.record({
-    type: "thinking_overridden",
+    type: telemetryEvent.thinkingOverridden,
     sessionId: metadata.sessionId,
     modelId: modelPolicy.modelId,
     providerId,
-    capability: "thinking",
+    capability: capabilityName.thinking,
     metadata: {
       reason: override.reason ?? `model policy set thinking ${override.thinking}`,
       source: "model_policy",

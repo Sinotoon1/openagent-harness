@@ -2,6 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ChatRouter } from "../router/chatRouter.js";
 import { compactContext } from "../context/compact.js";
 import { runPolicyDoctor } from "../diagnostics/policyDoctor.js";
+import { mcpToolName } from "../constants/toolNames.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 import { inspectModelPolicies } from "../policies/inspect.js";
 import { loadAllModelPolicies, loadModelPolicy } from "../policies/loader.js";
 import { repairToolInput, repairToolInputWithSpec } from "../repair/engine.js";
@@ -45,7 +47,7 @@ export interface ToolDependencies {
 
 export function registerTools(server: McpServer, deps: ToolDependencies): void {
   server.registerTool(
-    "oss_chat",
+    mcpToolName.ossChat,
     {
       title: "OSS Chat",
       description:
@@ -57,9 +59,9 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "oss_chat",
+          mcpToolName.ossChat,
           parsed.error.issues,
-          expectedShapes.oss_chat
+          expectedShapes[mcpToolName.ossChat]
         );
       }
 
@@ -77,7 +79,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "repair_tool_input",
+    mcpToolName.repairToolInput,
     {
       title: "Repair Tool Input",
       description:
@@ -89,7 +91,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (dangerousDescriptorIssues.length > 0) {
         return invalidToolInput(
           deps.telemetry,
-          "repair_tool_input",
+          mcpToolName.repairToolInput,
           dangerousDescriptorIssues,
           callerDescriptorExpectedShape
         );
@@ -99,9 +101,9 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "repair_tool_input",
+          mcpToolName.repairToolInput,
           parsed.error.issues,
-          expectedShapes.repair_tool_input
+          expectedShapes[mcpToolName.repairToolInput]
         );
       }
 
@@ -110,7 +112,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (hasBuiltInSchema === hasSchemaDescriptor) {
         return invalidToolInput(
           deps.telemetry,
-          "repair_tool_input",
+          mcpToolName.repairToolInput,
           [
             {
               code: "invalid_value",
@@ -118,7 +120,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
               message: "Provide exactly one of schemaName or schemaDescriptor."
             }
           ],
-          expectedShapes.repair_tool_input
+          expectedShapes[mcpToolName.repairToolInput]
         );
       }
 
@@ -127,7 +129,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
         if (!buildResult.valid) {
           return invalidToolInput(
             deps.telemetry,
-            "repair_tool_input",
+            mcpToolName.repairToolInput,
             buildResult.issues,
             callerDescriptorExpectedShape
           );
@@ -140,7 +142,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
           {
             sessionId: parsed.data.sessionId,
             telemetry: deps.telemetry,
-            toolName: "repair_tool_input"
+            toolName: mcpToolName.repairToolInput
           }
         );
 
@@ -151,7 +153,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (schemaName === undefined) {
         return invalidToolInput(
           deps.telemetry,
-          "repair_tool_input",
+          mcpToolName.repairToolInput,
           [
             {
               code: "invalid_value",
@@ -159,7 +161,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
               message: "schemaName is required when schemaDescriptor is not provided."
             }
           ],
-          expectedShapes.repair_tool_input
+          expectedShapes[mcpToolName.repairToolInput]
         );
       }
 
@@ -170,7 +172,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
         {
           sessionId: parsed.data.sessionId,
           telemetry: deps.telemetry,
-          toolName: "repair_tool_input"
+          toolName: mcpToolName.repairToolInput
         }
       );
 
@@ -185,7 +187,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
           sessionId: parsed.data.sessionId,
           modelId: parsed.data.modelId,
           telemetry: deps.telemetry,
-          toolName: "repair_tool_input"
+          toolName: mcpToolName.repairToolInput
         }
       );
 
@@ -194,7 +196,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "compact_context",
+    mcpToolName.compactContext,
     {
       title: "Compact Context",
       description:
@@ -206,9 +208,9 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "compact_context",
+          mcpToolName.compactContext,
           parsed.error.issues,
-          expectedShapes.compact_context
+          expectedShapes[mcpToolName.compactContext]
         );
       }
 
@@ -217,7 +219,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "get_model_policy",
+    mcpToolName.getModelPolicy,
     {
       title: "Get Model Policy",
       description:
@@ -229,9 +231,9 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "get_model_policy",
+          mcpToolName.getModelPolicy,
           parsed.error.issues,
-          expectedShapes.get_model_policy
+          expectedShapes[mcpToolName.getModelPolicy]
         );
       }
 
@@ -242,7 +244,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "inspect_model_policies",
+    mcpToolName.inspectModelPolicies,
     {
       title: "Inspect Model Policies",
       description:
@@ -254,9 +256,9 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "inspect_model_policies",
+          mcpToolName.inspectModelPolicies,
           parsed.error.issues,
-          expectedShapes.inspect_model_policies
+          expectedShapes[mcpToolName.inspectModelPolicies]
         );
       }
 
@@ -264,7 +266,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (modelId !== undefined && !isCanonicalModelId(modelId)) {
         return invalidToolInput(
           deps.telemetry,
-          "inspect_model_policies",
+          mcpToolName.inspectModelPolicies,
           [
             {
               code: "invalid_value",
@@ -272,7 +274,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
               message: `Unknown modelId ${modelId}. Expected one of: ${canonicalModelIds.join(", ")}.`
             }
           ],
-          expectedShapes.inspect_model_policies
+          expectedShapes[mcpToolName.inspectModelPolicies]
         );
       }
 
@@ -284,7 +286,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "run_policy_doctor",
+    mcpToolName.runPolicyDoctor,
     {
       title: "Run Policy Doctor",
       description:
@@ -295,16 +297,16 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       const parsed = runPolicyDoctorInputSchema.safeParse(input);
       if (!parsed.success) {
         return invalidToolInputWithoutTelemetry(
-          "run_policy_doctor",
+          mcpToolName.runPolicyDoctor,
           parsed.error.issues,
-          expectedShapes.run_policy_doctor
+          expectedShapes[mcpToolName.runPolicyDoctor]
         );
       }
 
       const modelId = parsed.data.modelId;
       if (modelId !== undefined && !isCanonicalModelId(modelId)) {
         return invalidToolInputWithoutTelemetry(
-          "run_policy_doctor",
+          mcpToolName.runPolicyDoctor,
           [
             {
               code: "invalid_value",
@@ -312,7 +314,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
               message: `Unknown modelId ${modelId}. Expected one of: ${canonicalModelIds.join(", ")}.`
             }
           ],
-          expectedShapes.run_policy_doctor
+          expectedShapes[mcpToolName.runPolicyDoctor]
         );
       }
 
@@ -337,7 +339,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "record_eval_event",
+    mcpToolName.recordEvalEvent,
     {
       title: "Record Eval Event",
       description: "Record a harness evaluation event in telemetry.",
@@ -348,14 +350,14 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "record_eval_event",
+          mcpToolName.recordEvalEvent,
           parsed.error.issues,
-          expectedShapes.record_eval_event
+          expectedShapes[mcpToolName.recordEvalEvent]
         );
       }
 
       deps.telemetry.record({
-        type: "eval_event_recorded",
+        type: telemetryEvent.evalEventRecorded,
         sessionId: parsed.data.sessionId,
         modelId: parsed.data.modelId,
         metadata: {
@@ -371,7 +373,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "query_telemetry",
+    mcpToolName.queryTelemetry,
     {
       title: "Query Telemetry",
       description: "Query in-memory harness telemetry with bounded, redacted metadata.",
@@ -382,9 +384,9 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "query_telemetry",
+          mcpToolName.queryTelemetry,
           parsed.error.issues,
-          expectedShapes.query_telemetry
+          expectedShapes[mcpToolName.queryTelemetry]
         );
       }
 
@@ -393,7 +395,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "get_harness_stats",
+    mcpToolName.getHarnessStats,
     {
       title: "Get Harness Stats",
       description: "Summarize recent sanitized in-memory harness telemetry.",
@@ -404,9 +406,9 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "get_harness_stats",
+          mcpToolName.getHarnessStats,
           parsed.error.issues,
-          expectedShapes.get_harness_stats
+          expectedShapes[mcpToolName.getHarnessStats]
         );
       }
 
@@ -415,7 +417,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
   );
 
   server.registerTool(
-    "suggest_repair_policy",
+    mcpToolName.suggestRepairPolicy,
     {
       title: "Suggest Repair Policy",
       description:
@@ -427,14 +429,14 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       if (!parsed.success) {
         return invalidToolInput(
           deps.telemetry,
-          "suggest_repair_policy",
+          mcpToolName.suggestRepairPolicy,
           parsed.error.issues,
-          expectedShapes.suggest_repair_policy
+          expectedShapes[mcpToolName.suggestRepairPolicy]
         );
       }
 
       const telemetryWindow = queryTelemetry(deps.telemetry, {
-        type: "tool_input_repaired",
+        type: telemetryEvent.toolInputRepaired,
         includeMetadata: true,
         limit: 200
       });

@@ -5,10 +5,12 @@ import YAML from "yaml";
 import { z } from "zod";
 import type { CanonicalModelId, ProviderId } from "../types.js";
 import { canonicalModelIds, providerIds } from "../types.js";
-
-export const stickySessionStrategies = ["raw", "hash"] as const;
-
-export type StickySessionStrategy = (typeof stickySessionStrategies)[number];
+import { stickySessionStrategies } from "../constants/provider.js";
+import type { StickySessionStrategy } from "../constants/provider.js";
+export {
+  stickySessionStrategies,
+  type StickySessionStrategy
+} from "../constants/provider.js";
 
 const stickySessionSchema = z
   .object({

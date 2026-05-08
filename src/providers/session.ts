@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { stickySessionStrategy } from "../constants/provider.js";
 import type { ProviderRuntimeConfig } from "./config.js";
 
 export function stableSessionPin(providerConfig: ProviderRuntimeConfig, sessionId: string): string {
@@ -13,7 +14,7 @@ export function buildStickySessionHeaders(
   sessionId: string
 ): Record<string, string> {
   const value =
-    providerConfig.stickySession.strategy === "raw"
+    providerConfig.stickySession.strategy === stickySessionStrategy.raw
       ? sessionId
       : stableSessionPin(providerConfig, sessionId);
 

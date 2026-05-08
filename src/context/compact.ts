@@ -1,6 +1,7 @@
 import type { CanonicalModelId, ChatMessage, Note } from "../types.js";
 import type { TelemetrySink } from "../telemetry/types.js";
 import { loadModelPolicy } from "../policies/loader.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 
 export interface CompactContextInput {
   modelId: CanonicalModelId;
@@ -73,7 +74,7 @@ export function compactContext(
   }
 
   telemetry?.record({
-    type: "context_compacted",
+    type: telemetryEvent.contextCompacted,
     sessionId: input.sessionId,
     modelId: input.modelId,
     metadata: {

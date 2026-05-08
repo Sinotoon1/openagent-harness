@@ -3,6 +3,12 @@ import type { TelemetrySink } from "../telemetry/types.js";
 import type { RepairName } from "../policies/types.js";
 import { loadModelPolicy } from "../policies/loader.js";
 import {
+  repairExecutionOrder,
+  repairName,
+  repairNoteCode
+} from "../constants/repairNames.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
+import {
   repairSchemaSpecs,
   type RepairSchemaName,
   type RepairSchemaSpec
@@ -13,14 +19,6 @@ import {
   summarizeIssue,
   type StandardInvalidToolResponse
 } from "../validation/invalidResponse.js";
-
-const repairOrder: RepairName[] = [
-  "stripNullOptional",
-  "emptyObjectToArray",
-  "parseJsonArrayString",
-  "bareStringToArray",
-  "markdownPathAutolinkUnwrap"
-];
 
 type IssuePathSegment = string | number | symbol;
 
@@ -76,7 +74,7 @@ export function repairToolInputWithSpec(
 
   const originalIssues = firstValidation.error.issues;
   options.telemetry?.record({
-    type: "tool_input_invalid",
+    type: telemetryEvent.toolInputInvalid,
     sessionId: options.sessionId,
     modelId,
     toolName,
@@ -91,7 +89,7 @@ export function repairToolInputWithSpec(
   const noteKeys = new Set<string>();
   const enabledRepairs = new Set(policy.repairs);
 
-  for (const repair of repairOrder) {
+  for (const repair of repairExecutionOrder) {
     if (!enabledRepairs.has(repair)) {
       continue;
     }
@@ -125,7 +123,7 @@ export function repairToolInputWithSpec(
 
   if (notes.length > 0) {
     options.telemetry?.record({
-      type: "tool_input_repaired",
+      type: telemetryEvent.toolInputRepaired,
       sessionId: options.sessionId,
       modelId,
       toolName,
@@ -161,19 +159,19 @@ function applyRepairAtIssuePath(
   }
 
   switch (repair) {
-    case "stripNullOptional":
+    case repairName.stripNullOptional:
       stripNullOptional(spec, input, issuePath, notes, noteKeys);
       break;
-    case "emptyObjectToArray":
+    case repairName.emptyObjectToArray:
       emptyObjectToArray(spec, input, issuePath, notes, noteKeys);
       break;
-    case "parseJsonArrayString":
+    case repairName.parseJsonArrayString:
       parseJsonArrayString(spec, input, issuePath, notes, noteKeys);
       break;
-    case "bareStringToArray":
+    case repairName.bareStringToArray:
       bareStringToArray(spec, input, issuePath, notes, noteKeys);
       break;
-    case "markdownPathAutolinkUnwrap":
+    case repairName.markdownPathAutolinkUnwrap:
       markdownPathAutolinkUnwrap(spec, input, issuePath, notes, noteKeys);
       break;
   }
@@ -193,7 +191,7 @@ function stripNullOptional(
 
   delete input[field];
   pushNote(notes, noteKeys, {
-    code: "repair.stripNullOptional",
+    code: repairNoteCode(repairName.stripNullOptional),
     path: field,
     message: `Removed null optional field ${field}.`
   });
@@ -214,7 +212,7 @@ function emptyObjectToArray(
 
   input[field] = [];
   pushNote(notes, noteKeys, {
-    code: "repair.emptyObjectToArray",
+    code: repairNoteCode(repairName.emptyObjectToArray),
     path: field,
     message: `Converted empty object placeholder at ${field} to an empty array.`
   });
@@ -243,7 +241,7 @@ function parseJsonArrayString(
     if (Array.isArray(parsed)) {
       input[field] = parsed;
       pushNote(notes, noteKeys, {
-        code: "repair.parseJsonArrayString",
+        code: repairNoteCode(repairName.parseJsonArrayString),
         path: field,
         message: `Parsed JSON array string at ${field}.`
       });
@@ -268,7 +266,7 @@ function bareStringToArray(
 
   input[field] = [value];
   pushNote(notes, noteKeys, {
-    code: "repair.bareStringToArray",
+    code: repairNoteCode(repairName.bareStringToArray),
     path: field,
     message: `Wrapped bare string at ${field} as a one-item array.`
   });
@@ -322,7 +320,7 @@ function markdownPathAutolinkUnwrap(
     if (unwrapped !== item) {
       value[index] = unwrapped;
       pushNote(notes, noteKeys, {
-        code: "repair.markdownPathAutolinkUnwrap",
+        code: repairNoteCode(repairName.markdownPathAutolinkUnwrap),
         path: pathToString(issuePath),
         message: `Unwrapped degenerate markdown auto-link at ${pathToString(issuePath)}.`
       });
@@ -345,7 +343,7 @@ function unwrapAtTopLevel(
   if (unwrapped !== value) {
     input[field] = unwrapped;
     pushNote(notes, noteKeys, {
-      code: "repair.markdownPathAutolinkUnwrap",
+      code: repairNoteCode(repairName.markdownPathAutolinkUnwrap),
       path: field,
       message: `Unwrapped degenerate markdown auto-link at ${field}.`
     });
@@ -373,7 +371,7 @@ function unwrapArrayItems(
   if (changed) {
     input[field] = next;
     pushNote(notes, noteKeys, {
-      code: "repair.markdownPathAutolinkUnwrap",
+      code: repairNoteCode(repairName.markdownPathAutolinkUnwrap),
       path: field,
       message: `Unwrapped degenerate markdown auto-links in ${field}.`
     });

@@ -1,5 +1,6 @@
 import type { TelemetryEvent } from "./types.js";
 import { repairNames, type RepairName } from "../policies/types.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 
 export interface ModelRepairReport {
   totalRepairEvents: number;
@@ -17,7 +18,7 @@ export function createRepairTelemetryReport(
   const models: Record<string, ModelRepairReport> = {};
 
   for (const event of events) {
-    if (event.type !== "tool_input_repaired") {
+    if (event.type !== telemetryEvent.toolInputRepaired) {
       continue;
     }
 

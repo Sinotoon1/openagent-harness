@@ -1,3 +1,8 @@
+import type { CapabilityName } from "./constants/capabilities.js";
+import type { FallbackPhase } from "./constants/fallback.js";
+export { capabilityNames, type CapabilityName } from "./constants/capabilities.js";
+export { type FallbackPhase } from "./constants/fallback.js";
+
 export const canonicalModelIds = [
   "kimi-k2-6",
   "deepseek-v4-pro",
@@ -10,17 +15,7 @@ export const providerIds = ["deepseekPrimary", "openrouterFallback"] as const;
 
 export type ProviderId = (typeof providerIds)[number];
 
-export const capabilityNames = [
-  "zeroDataRetention",
-  "disallowPromptTraining",
-  "thinking"
-] as const;
-
-export type CapabilityName = (typeof capabilityNames)[number];
-
 export type CapabilityFlags = Partial<Record<CapabilityName, boolean>>;
-
-export type FallbackPhase = "before_first_token" | "after_first_token";
 
 export interface Note {
   code: string;

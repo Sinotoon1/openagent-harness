@@ -1,4 +1,5 @@
 import { repairNames, type RepairName } from "../policies/types.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 import type { TelemetryEvent } from "./types.js";
 
 export type RepairPolicySuggestionConfidence = "low" | "medium" | "high";
@@ -134,7 +135,7 @@ function groupRepairTelemetryByModel(
   const byModel: Record<string, ModelRepairTelemetry> = {};
 
   for (const event of events) {
-    if (event.type !== "tool_input_repaired") {
+    if (event.type !== telemetryEvent.toolInputRepaired) {
       continue;
     }
 

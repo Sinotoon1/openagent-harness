@@ -1,29 +1,31 @@
 import { sanitizeForResponse } from "../security/sanitize.js";
 import type { TelemetrySink } from "../telemetry/types.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
+import { mcpToolName } from "../constants/toolNames.js";
 import {
   makeInvalidToolResponse,
   type IssueLike
 } from "../validation/invalidResponse.js";
 
 export const expectedShapes = {
-  oss_chat:
+  [mcpToolName.ossChat]:
     "{ modelId: canonicalModelId; sessionId: string; messages: ChatMessage[]; providerPriority?: ProviderId[]; capabilities?: CapabilityFlags; temperature?: number; maxTokens?: number; streaming?: { enabled?: boolean }; includeRawProviderResponse?: boolean; metadata?: object }",
-  repair_tool_input:
+  [mcpToolName.repairToolInput]:
     "{ modelId: canonicalModelId; input: unknown; sessionId?: string; schemaName?: oss_chat | readFile | writeFile | pathBatch; schemaDescriptor?: { toolName: string; schema: callerRepairSchema; pathStringFields?: string[]; pathStringArrayFields?: string[] }; provide exactly one of schemaName or schemaDescriptor }",
-  compact_context:
+  [mcpToolName.compactContext]:
     "{ modelId: canonicalModelId; messages: ChatMessage[]; sessionId?: string; usedTokens?: nonnegative integer; inFlightTaskMessageIds?: string[] }",
-  get_model_policy: "{ modelId?: canonicalModelId }",
-  inspect_model_policies:
+  [mcpToolName.getModelPolicy]: "{ modelId?: canonicalModelId }",
+  [mcpToolName.inspectModelPolicies]:
     "{ modelId?: string; includeProviders?: boolean; includeRepairs?: boolean; includeContext?: boolean; includeOverrides?: boolean; includeWarnings?: boolean }",
-  run_policy_doctor:
+  [mcpToolName.runPolicyDoctor]:
     "{ modelId?: string; includeTelemetry?: boolean; includeProviderConfig?: boolean; includeSuggestions?: boolean; severity?: info | warning | error }",
-  record_eval_event:
+  [mcpToolName.recordEvalEvent]:
     "{ eventName: string; sessionId?: string; modelId?: canonicalModelId; outcome?: pass | fail | skip | error; score?: number; metadata?: object }",
-  query_telemetry:
+  [mcpToolName.queryTelemetry]:
     "{ type?: telemetryEventType; modelId?: canonicalModelId; providerId?: ProviderId; toolName?: string; sessionId?: string; limit?: 1..200; includeMetadata?: boolean }",
-  get_harness_stats:
+  [mcpToolName.getHarnessStats]:
     "{ modelId?: canonicalModelId; sessionId?: string; eventType?: string; limit?: 1..200; includeProviders?: boolean }",
-  suggest_repair_policy: "{ modelId?: canonicalModelId }"
+  [mcpToolName.suggestRepairPolicy]: "{ modelId?: canonicalModelId }"
 } as const;
 
 export function asJsonText(data: unknown, isError = false) {
@@ -64,7 +66,7 @@ export function invalidToolInput(
   });
 
   telemetry.record({
-    type: "tool_input_invalid",
+    type: telemetryEvent.toolInputInvalid,
     toolName,
     metadata: {
       issues: response.issues

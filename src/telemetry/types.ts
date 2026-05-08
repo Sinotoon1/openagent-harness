@@ -3,22 +3,11 @@ import type {
   CapabilityName,
   ProviderId
 } from "../types.js";
-
-export const telemetryEventTypes = [
-  "provider_fallback",
-  "tool_input_repaired",
-  "tool_input_normalized",
-  "tool_input_invalid",
-  "capability_dropped",
-  "capability_negotiated",
-  "thinking_overridden",
-  "cache_likely_warm",
-  "cache_likely_cold",
-  "context_compacted",
-  "eval_event_recorded"
-] as const;
-
-export type TelemetryEventType = (typeof telemetryEventTypes)[number];
+import type { TelemetryEventType } from "../constants/telemetryEvents.js";
+export {
+  telemetryEventTypes,
+  type TelemetryEventType
+} from "../constants/telemetryEvents.js";
 
 export interface TelemetryEvent {
   type: TelemetryEventType;

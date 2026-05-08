@@ -1,5 +1,6 @@
 import type { CanonicalModelId, Note } from "../types.js";
 import type { TelemetrySink } from "../telemetry/types.js";
+import { telemetryEvent } from "../constants/telemetryEvents.js";
 import { repairSchemaSpecs, type RepairSchemaName } from "../repair/schemaSpecs.js";
 import { applyReadFileRelationalDefaults } from "./readFileDefaults.js";
 
@@ -58,7 +59,7 @@ export function normalizeToolInput(
 
   if (defaults.notes.length > 0) {
     options.telemetry?.record({
-      type: "tool_input_normalized",
+      type: telemetryEvent.toolInputNormalized,
       sessionId: options.sessionId,
       modelId: options.modelId,
       toolName: options.toolName ?? schemaName,

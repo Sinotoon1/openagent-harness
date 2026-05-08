@@ -1,3 +1,33 @@
+## oss-agent-harness-mcp v1.0.0-candidate.22
+
+This candidate release is a maintainability-only constants centralization pass.
+
+### Changed
+
+- Added focused constants modules for MCP tool names, repair names and execution
+  order, telemetry event names, capability names, fallback phases, and provider
+  sticky-session strategies.
+- Reused those constants from tool registration, response helpers, repair
+  execution, telemetry stats/suggestions/reporting, capability negotiation,
+  provider errors, provider config validation, and sticky-session handling.
+- Added focused constants tests for registered MCP tool names, repair execution
+  order, telemetry stats constants, and sticky-session strategy acceptance.
+
+### Preserved
+
+- No serialized names or public API names changed.
+- MCP tool names, public response shapes, repair behavior, provider routing,
+  fallback semantics, streaming parser behavior, telemetry semantics, JSONL
+  behavior, security sanitization semantics, context compaction, schema
+  descriptor behavior, policy behavior, provider config loading, and package file
+  inclusion behavior are unchanged.
+
+### Validation
+
+- `npm test`: 11 test files passed, 163 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 150 files, 86.0 kB package, 412.2 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.21
 
 This candidate release is a maintainability-only cleanup for MCP tool response

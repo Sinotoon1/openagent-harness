@@ -1,15 +1,8 @@
 import { z } from "zod";
 import { canonicalModelIds } from "../types.js";
-
-export const repairNames = [
-  "emptyObjectToArray",
-  "parseJsonArrayString",
-  "bareStringToArray",
-  "stripNullOptional",
-  "markdownPathAutolinkUnwrap"
-] as const;
-
-export type RepairName = (typeof repairNames)[number];
+import { repairNames } from "../constants/repairNames.js";
+import type { RepairName } from "../constants/repairNames.js";
+export { repairNames, type RepairName } from "../constants/repairNames.js";
 
 export const providerThinkingOverrideValues = [
   "enabled",
