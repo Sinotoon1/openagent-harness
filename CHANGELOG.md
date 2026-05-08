@@ -1,3 +1,31 @@
+## oss-agent-harness-mcp v1.0.0-candidate.16
+
+This candidate release fixes MCP-visible provider HTTP error reporting so raw
+provider response bodies are not exposed.
+
+### Fixed
+
+- OpenAI-compatible provider HTTP failures no longer read raw response bodies
+  into `ProviderError.message`.
+- Safe provider diagnostics retain provider ID, HTTP status, fallback phase,
+  and retryability for MCP responses and fallback attempts.
+- Added regression coverage for non-streaming HTTP errors, streaming setup
+  HTTP errors, after-first-token stream failures, prompt-like body text,
+  header/env-looking body text, secret-shaped body text, fallback behavior,
+  and fallback telemetry.
+
+### Preserved
+
+- Provider routing, fallback semantics, streaming parser behavior, telemetry
+  semantics, JSONL behavior, repair behavior, sanitization semantics, context
+  compaction, MCP tool names, schema descriptor behavior, and policy behavior
+  are unchanged.
+
+### Validation
+
+- `npm test`: 10 test files passed, 142 tests passed.
+- `npm run build`: passed.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.15
 
 This candidate release polishes release documentation and npm packaging metadata for a production-ready v1 decision.

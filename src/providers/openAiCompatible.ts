@@ -120,15 +120,14 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const responseText = await response.text().catch(() => "");
+      const retryable = isRetryableStatus(response.status);
       throw new ProviderError(
-        `Provider ${this.id} returned HTTP ${response.status}${
-          responseText ? `: ${responseText.slice(0, 500)}` : ""
-        }`,
+        safeHttpErrorMessage(this.id, response.status, "before_first_token", retryable),
         {
-          retryable: isRetryableStatus(response.status),
+          retryable,
           status: response.status,
-          providerId: this.id
+          providerId: this.id,
+          fallbackPhase: "before_first_token"
         }
       );
     }
@@ -312,4 +311,14 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
 
     return slug;
   }
+}
+
+function safeHttpErrorMessage(
+  providerId: ProviderId,
+  status: number,
+  fallbackPhase: FallbackPhase,
+  retryable: boolean
+): string {
+  const retryability = retryable ? "retryable" : "non_retryable";
+  return `Provider ${providerId} returned HTTP ${status} ${fallbackPhase} (${retryability}).`;
 }

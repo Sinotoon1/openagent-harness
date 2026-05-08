@@ -1,6 +1,6 @@
 {
   "name": "oss-agent-harness-mcp",
-  "version": "1.0.0-candidate.15",
+  "version": "1.0.0-candidate.16",
   "description": "First-version MCP server exposing an OSS coding-agent harness.",
   "type": "module",
   "bin": {

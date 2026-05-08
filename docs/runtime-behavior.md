@@ -101,6 +101,11 @@ Retryable provider failures may fallback only before first meaningful assistant
 output. After content deltas or tool-call deltas begin, the router does not
 automatically switch providers.
 
+MCP-visible provider errors are sanitized diagnostics only. HTTP failures report
+safe fields such as provider ID, status, fallback phase, and retryability; raw
+provider response bodies are not included in tool responses or fallback
+telemetry.
+
 Remaining candidate caveats:
 
 - MCP tool responses return collected final text after the provider stream completes rather than incremental MCP streaming.

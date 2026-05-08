@@ -1,15 +1,19 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ChatRouter } from "../src/router/chatRouter.js";
+import { ChatRouter } from "../src/router/chatRouter.js";
+import { OpenAICompatibleProviderAdapter } from "../src/providers/openAiCompatible.js";
+import type { ProviderRuntimeConfig } from "../src/providers/config.js";
+import type { ProviderAdapter } from "../src/providers/types.js";
 import { registerTools } from "../src/tools/index.js";
 import { JsonlTelemetrySink } from "../src/telemetry/jsonl.js";
 import { InMemoryTelemetrySink } from "../src/telemetry/memory.js";
 import { createReviewableRepairPolicySuggestions } from "../src/telemetry/repairPolicySuggestions.js";
 import { hashSessionId, hashSessionIdWithSalt } from "../src/security/sessionHash.js";
 import type { TelemetrySink } from "../src/telemetry/types.js";
+import type { CapabilityFlags, ProviderId } from "../src/types.js";
 
 type ToolHandler = (input: unknown) => Promise<{
   content: Array<{ type: "text"; text: string }>;
@@ -19,12 +23,16 @@ type ToolHandler = (input: unknown) => Promise<{
 const tempDirs: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-function makeRegisteredTools(telemetry: TelemetrySink = new InMemoryTelemetrySink()) {
+function makeRegisteredTools(
+  telemetry: TelemetrySink = new InMemoryTelemetrySink(),
+  router: ChatRouter = {} as ChatRouter
+) {
   const handlers = new Map<string, ToolHandler>();
   const server = {
     registerTool(name: string, _config: unknown, handler: ToolHandler) {
@@ -33,7 +41,7 @@ function makeRegisteredTools(telemetry: TelemetrySink = new InMemoryTelemetrySin
   } as unknown as McpServer;
 
   registerTools(server, {
-    router: {} as ChatRouter,
+    router,
     telemetry
   });
 
@@ -80,6 +88,202 @@ describe("MCP tools", () => {
     const { handlers } = makeRegisteredTools();
 
     expect(handlers.has("get_harness_stats")).toBe(true);
+  });
+
+  describe("oss_chat provider error sanitization", () => {
+    it("does not return non-streaming HTTP error bodies through oss_chat", async () => {
+      const rawBody = "plain provider body with customer metadata raw-body-123";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => textResponse(rawBody, 500))
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+
+      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).not.toContain(rawBody);
+      expect(responseText).not.toContain("raw-body-123");
+    });
+
+    it("does not return streaming HTTP error bodies before first token", async () => {
+      const rawBody = "stream setup failed with raw provider body stream-leak-456";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => textResponse(rawBody, 503))
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne"],
+        streaming: { enabled: true }
+      });
+
+      expect(responseText).toContain("Provider providerOne returned HTTP 503");
+      expect(responseText).toContain("before_first_token");
+      expect(responseText).not.toContain(rawBody);
+      expect(responseText).not.toContain("stream-leak-456");
+    });
+
+    it("does not return provider body text from after-first-token stream failures", async () => {
+      const rawStreamError = "provider_error_body: internal prompt fragment stream-leak-789";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          sseResponse([
+            sseData({ choices: [{ delta: { content: "partial" } }] }),
+            `data: ${rawStreamError}\n\n`
+          ])
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne"],
+        streaming: { enabled: true }
+      });
+
+      expect(responseText).toContain("Provider providerOne stream failed after assistant output started");
+      expect(responseText).not.toContain(rawStreamError);
+      expect(responseText).not.toContain("stream-leak-789");
+    });
+
+    it("does not return raw prompt-like provider HTTP bodies", async () => {
+      const rawBody = "User prompt: summarize this private roadmap and prior messages.";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => textResponse(rawBody, 500))
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+
+      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).not.toContain("User prompt");
+      expect(responseText).not.toContain("private roadmap");
+      expect(responseText).not.toContain("prior messages");
+    });
+
+    it("does not return raw header-like or env-like provider HTTP bodies", async () => {
+      const rawBody =
+        "X-Internal-Trace: trace-abc-123\nPROVIDER_ONE_BASE_URL=https://internal.example";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => textResponse(rawBody, 502))
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+
+      expect(responseText).toContain("Provider providerOne returned HTTP 502");
+      expect(responseText).not.toContain("X-Internal-Trace");
+      expect(responseText).not.toContain("trace-abc-123");
+      expect(responseText).not.toContain("PROVIDER_ONE_BASE_URL");
+      expect(responseText).not.toContain("internal.example");
+    });
+
+    it("does not return secret-shaped provider HTTP bodies", async () => {
+      const rawBody = "provider said Authorization: Bearer raw-provider-token-12345";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => textResponse(rawBody, 500))
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+
+      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).not.toContain("raw-provider-token-12345");
+      expect(responseText).not.toContain("Authorization");
+      expect(responseText).not.toContain("<redacted>");
+    });
+
+    it("keeps provider id, HTTP status, phase, and retryability in safe errors", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => textResponse("raw body should be omitted", 429))
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+
+      expect(responseText).toContain("providerOne");
+      expect(responseText).toContain("HTTP 429");
+      expect(responseText).toContain("before_first_token");
+      expect(responseText).toContain("retryable");
+      expect(responseText).not.toContain("raw body should be omitted");
+    });
+
+    it("still falls back for retryable HTTP errors before first token", async () => {
+      const fetchMock = vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.startsWith("https://provider-one.example")) {
+          return textResponse("raw body from first provider fallback-leak", 500);
+        }
+        return jsonResponse({
+          choices: [{ message: { content: "fallback answer" } }]
+        });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const { handlers, telemetry } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1"),
+        createOpenAIProvider("providerTwo", "https://provider-two.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne", "providerTwo"]
+      });
+
+      expect(responseText).toContain('"providerId": "providerTwo"');
+      expect(responseText).toContain("Provider providerOne returned HTTP 500");
+      expect(responseText).not.toContain("fallback-leak");
+      expect(JSON.stringify(telemetry.getEvents())).not.toContain("fallback-leak");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("still does not fallback after first streamed token", async () => {
+      const fetchMock = vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.startsWith("https://provider-two.example")) {
+          return jsonResponse({
+            choices: [{ message: { content: "must not be used" } }]
+          });
+        }
+        return sseResponse([
+          sseData({ choices: [{ delta: { content: "partial" } }] }),
+          "data: provider_error_body after token no-fallback-leak\n\n"
+        ]);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1"),
+        createOpenAIProvider("providerTwo", "https://provider-two.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne", "providerTwo"],
+        streaming: { enabled: true }
+      });
+
+      expect(responseText).toContain("Provider providerOne stream failed after assistant output started");
+      expect(responseText).not.toContain("must not be used");
+      expect(responseText).not.toContain("no-fallback-leak");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("registers inspect_model_policies", () => {
@@ -1855,4 +2059,87 @@ function tempTelemetryPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "oss-harness-tools-"));
   tempDirs.push(dir);
   return join(dir, "telemetry.jsonl");
+}
+
+const testProviderCapabilities: Required<CapabilityFlags> = {
+  zeroDataRetention: true,
+  disallowPromptTraining: true,
+  thinking: true
+};
+
+function testProviderConfig(id: ProviderId): ProviderRuntimeConfig {
+  return {
+    id,
+    stickySession: {
+      header: "X-Session-Id",
+      strategy: "raw"
+    }
+  };
+}
+
+function createOpenAIProvider(id: ProviderId, baseUrl: string): OpenAICompatibleProviderAdapter {
+  return new OpenAICompatibleProviderAdapter({
+    id,
+    baseUrl,
+    providerConfig: testProviderConfig(id),
+    capabilities: testProviderCapabilities,
+    modelSlugs: {
+      "kimi-k2-6": `${id}-kimi`
+    }
+  });
+}
+
+function makeRegisteredToolsWithProviders(providers: ProviderAdapter[]) {
+  const telemetry = new InMemoryTelemetrySink();
+  const registered = makeRegisteredTools(telemetry, new ChatRouter(providers, telemetry));
+  return { ...registered, telemetry };
+}
+
+async function callOssChat(
+  handlers: Map<string, ToolHandler>,
+  overrides: Record<string, unknown>
+): Promise<string> {
+  const result = await handlers.get("oss_chat")?.({
+    modelId: "kimi-k2-6",
+    sessionId: "provider-error-session",
+    messages: [{ role: "user", content: "hello" }],
+    ...overrides
+  });
+
+  return result?.content[0]?.text ?? "";
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
+function textResponse(body: string, status: number): Response {
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/plain" }
+  });
+}
+
+function sseResponse(lines: string[]): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const line of lines) {
+        controller.enqueue(encoder.encode(line));
+      }
+      controller.close();
+    }
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" }
+  });
+}
+
+function sseData(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
 }
