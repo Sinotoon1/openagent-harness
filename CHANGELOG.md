@@ -1,3 +1,36 @@
+## oss-agent-harness-mcp v1.0.0-candidate.24
+
+This candidate release is a maintainability-only policy diagnostic helper
+extraction.
+
+### Changed
+
+- Added shared pure policy diagnostic helpers for context threshold parsing and
+  ordering checks, repair list diagnostics, provider override diagnostics, and
+  plain-record/string extraction.
+- Reused those helpers from `inspect_model_policies` policy inspection and
+  `run_policy_doctor` diagnostics while keeping their public output shapes and
+  wording unchanged.
+- Updated package metadata and MCP server advertised version to
+  `1.0.0-candidate.24`.
+
+### Preserved
+
+- Runtime behavior is unchanged.
+- `inspect_model_policies` output is unchanged.
+- `run_policy_doctor` output is unchanged.
+- MCP tool names, public response shapes, repair behavior, provider routing,
+  fallback semantics, streaming parser behavior, telemetry semantics, JSONL
+  behavior, security sanitization semantics, context compaction, schema
+  descriptor behavior, provider config loading, package file inclusion behavior,
+  and policy YAML semantics are unchanged.
+
+### Validation
+
+- `npm test`: 15 test files passed, 163 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 153 files, 86.7 kB package, 416.4 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.23
 
 This candidate release is test-maintainability-only.

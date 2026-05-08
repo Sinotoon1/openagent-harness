@@ -2,12 +2,18 @@ import { parseProviderRuntimeConfigs, loadProviderRuntimeConfigs } from "../prov
 import type { ProviderRuntimeConfigMap } from "../providers/config.js";
 import { stickySessionStrategies } from "../constants/provider.js";
 import { telemetryEvent } from "../constants/telemetryEvents.js";
+import {
+  contextThresholdOrderViolations,
+  isRecord,
+  providerOverrideDiagnostics,
+  repairDiagnostics
+} from "../policies/diagnosticHelpers.js";
 import { loadAllModelPolicies, loadModelPolicy } from "../policies/loader.js";
-import { modelPolicySchema, repairNames } from "../policies/types.js";
+import { modelPolicySchema } from "../policies/types.js";
 import { createReviewableRepairPolicySuggestions } from "../telemetry/repairPolicySuggestions.js";
 import { queryTelemetry } from "../telemetry/query.js";
 import type { TelemetrySink } from "../telemetry/types.js";
-import { canonicalModelIds, providerIds } from "../types.js";
+import { canonicalModelIds } from "../types.js";
 import type { CanonicalModelId } from "../types.js";
 
 export type PolicyDoctorSeverity = "info" | "warning" | "error";
@@ -56,16 +62,9 @@ const severityRank: Record<PolicyDoctorSeverity, number> = {
   error: 2
 };
 
-const knownRepairNames = new Set<string>(repairNames);
-const knownProviderIds = new Set<string>(providerIds);
 const knownModelIds = new Set<string>(canonicalModelIds);
 const knownStickySessionStrategies = new Set<string>(stickySessionStrategies);
 const envVarNamePattern = /^[A-Z_][A-Z0-9_]*$/;
-const orderedThresholdKeys = [
-  "dropDeadToolCalls",
-  "aggressiveDrop",
-  "summarizeOldContext"
-] as const;
 
 export function runPolicyDoctor(
   input: PolicyDoctorInput = {},
@@ -203,30 +202,25 @@ function diagnoseRepairs(
     ];
   }
 
-  const issues: PolicyDoctorIssue[] = [];
-  if (repairs.length === 0) {
-    issues.push({
-      severity: "warning",
-      code: "empty_repairs",
-      message: "Model policy enables no repairs.",
-      ...(modelId ? { modelId } : {}),
-      recommendation: "Confirm this model intentionally bypasses all repair helpers."
-    });
-  }
-
-  for (const repair of repairs) {
-    if (typeof repair === "string" && !knownRepairNames.has(repair)) {
-      issues.push({
-        severity: "error",
-        code: "unknown_repair_name",
-        message: `Model policy references unknown repair ${repair}.`,
+  return repairDiagnostics(repairs).map((diagnostic) => {
+    if (diagnostic.kind === "empty_repairs") {
+      return {
+        severity: "warning",
+        code: "empty_repairs",
+        message: "Model policy enables no repairs.",
         ...(modelId ? { modelId } : {}),
-        recommendation: "Use one of the known repair names from the harness repair policy schema."
-      });
+        recommendation: "Confirm this model intentionally bypasses all repair helpers."
+      };
     }
-  }
 
-  return issues;
+    return {
+      severity: "error",
+      code: "unknown_repair_name",
+      message: `Model policy references unknown repair ${diagnostic.repair}.`,
+      ...(modelId ? { modelId } : {}),
+      recommendation: "Use one of the known repair names from the harness repair policy schema."
+    };
+  });
 }
 
 function diagnoseContext(
@@ -248,21 +242,14 @@ function diagnoseContext(
     });
   }
 
-  const thresholds = contextThresholds(policy);
-  for (let index = 0; index < orderedThresholdKeys.length - 1; index += 1) {
-    const currentKey = orderedThresholdKeys[index];
-    const nextKey = orderedThresholdKeys[index + 1];
-    const current = thresholds[currentKey];
-    const next = thresholds[nextKey];
-    if (current !== undefined && next !== undefined && current > next) {
-      issues.push({
-        severity: "warning",
-        code: "context_threshold_order",
-        message: `${nextKey} should be greater than or equal to ${currentKey}.`,
-        ...(modelId ? { modelId } : {}),
-        recommendation: "Order context thresholds from earlier/more aggressive to later/less aggressive budget triggers."
-      });
-    }
+  for (const violation of contextThresholdOrderViolations(policy)) {
+    issues.push({
+      severity: "warning",
+      code: "context_threshold_order",
+      message: `${violation.nextKey} should be greater than or equal to ${violation.currentKey}.`,
+      ...(modelId ? { modelId } : {}),
+      recommendation: "Order context thresholds from earlier/more aggressive to later/less aggressive budget triggers."
+    });
   }
 
   return issues;
@@ -272,59 +259,45 @@ function diagnoseProviderOverrides(
   overrides: unknown,
   modelId: string | undefined
 ): PolicyDoctorIssue[] {
-  if (!Array.isArray(overrides)) {
-    return [];
-  }
-
-  const issues: PolicyDoctorIssue[] = [];
-  const seen = new Map<string, number>();
-
-  for (const [index, override] of overrides.entries()) {
-    if (!isRecord(override)) {
-      continue;
+  return providerOverrideDiagnostics(overrides).flatMap((diagnostic) => {
+    switch (diagnostic.kind) {
+      case "unknown_provider_override":
+        return [
+          {
+            severity: "warning",
+            code: "unknown_provider_override",
+            message: `Provider override references unknown providerId ${diagnostic.providerId}.`,
+            ...(modelId ? { modelId } : {}),
+            providerId: diagnostic.providerId,
+            recommendation: "Remove the override or add a matching provider config owned by the provider layer."
+          }
+        ];
+      case "duplicate_provider_override":
+        return [
+          {
+            severity: "warning",
+            code: "duplicate_provider_override",
+            message: `Duplicate provider override for ${diagnostic.providerId}; first entry is at index ${diagnostic.firstIndex}.`,
+            ...(modelId ? { modelId } : {}),
+            providerId: diagnostic.providerId,
+            recommendation: "Keep one provider override per model/provider pair."
+          }
+        ];
+      case "provider_override_no_effective_change":
+        return [
+          {
+            severity: "warning",
+            code: "provider_override_no_effective_change",
+            message: "Provider override leaves thinking unchanged and has no effective change.",
+            ...(modelId ? { modelId } : {}),
+            ...(diagnostic.providerId ? { providerId: diagnostic.providerId } : {}),
+            recommendation: "Remove no-op overrides unless they are deliberately documenting a reviewed decision."
+          }
+        ];
+      case "invalid_provider_override_thinking":
+        return [];
     }
-
-    const providerId = typeof override.providerId === "string" ? override.providerId : undefined;
-    if (providerId !== undefined) {
-      if (!knownProviderIds.has(providerId)) {
-        issues.push({
-          severity: "warning",
-          code: "unknown_provider_override",
-          message: `Provider override references unknown providerId ${providerId}.`,
-          ...(modelId ? { modelId } : {}),
-          providerId,
-          recommendation: "Remove the override or add a matching provider config owned by the provider layer."
-        });
-      }
-
-      const firstIndex = seen.get(providerId);
-      if (firstIndex !== undefined) {
-        issues.push({
-          severity: "warning",
-          code: "duplicate_provider_override",
-          message: `Duplicate provider override for ${providerId}; first entry is at index ${firstIndex}.`,
-          ...(modelId ? { modelId } : {}),
-          providerId,
-          recommendation: "Keep one provider override per model/provider pair."
-        });
-      } else {
-        seen.set(providerId, index);
-      }
-    }
-
-    if (override.thinking === "unchanged") {
-      issues.push({
-        severity: "warning",
-        code: "provider_override_no_effective_change",
-        message: "Provider override leaves thinking unchanged and has no effective change.",
-        ...(modelId ? { modelId } : {}),
-        ...(providerId ? { providerId } : {}),
-        recommendation: "Remove no-op overrides unless they are deliberately documenting a reviewed decision."
-      });
-    }
-  }
-
-  return issues;
+  });
 }
 
 function diagnoseDeepSeekPolicyOverride(
@@ -655,35 +628,6 @@ function buildReport(
   };
 }
 
-function contextThresholds(policy: Record<string, unknown>): Record<string, number> {
-  const rawThresholds = firstRecord(
-    policy.contextThresholds,
-    isRecord(policy.context) ? policy.context.thresholds : undefined
-  );
-  if (!rawThresholds) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(rawThresholds).filter((entry): entry is [string, number] => {
-      return typeof entry[1] === "number";
-    })
-  );
-}
-
-function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
-  return values.find(isRecord);
-}
-
 function recordModelId(policy: unknown): string | undefined {
   return isRecord(policy) && typeof policy.modelId === "string" ? policy.modelId : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
 }

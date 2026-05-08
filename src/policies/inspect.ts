@@ -1,9 +1,13 @@
-import { canonicalModelIds, providerIds } from "../types.js";
+import { canonicalModelIds } from "../types.js";
 import {
-  modelPolicySchema,
-  providerThinkingOverrideValues,
-  repairNames
-} from "./types.js";
+  contextThresholdOrderViolations,
+  contextThresholds,
+  isRecord,
+  providerOverrideDiagnostics,
+  repairDiagnostics,
+  stringValue
+} from "./diagnosticHelpers.js";
+import { modelPolicySchema } from "./types.js";
 
 export interface PolicyInspectionOptions {
   includeProviders?: boolean;
@@ -42,15 +46,6 @@ export interface PolicyWarning {
 }
 
 const knownModelIds = new Set<string>(canonicalModelIds);
-const knownProviderIds = new Set<string>(providerIds);
-const knownRepairNames = new Set<string>(repairNames);
-const knownThinkingOverrides = new Set<string>(providerThinkingOverrideValues);
-
-const orderedThresholdKeys = [
-  "dropDeadToolCalls",
-  "aggressiveDrop",
-  "summarizeOldContext"
-] as const;
 
 type NormalizedPolicyInspectionOptions = Required<PolicyInspectionOptions>;
 
@@ -123,31 +118,21 @@ function modelWarnings(policy: Record<string, unknown>): PolicyWarning[] {
 }
 
 function repairWarnings(policy: Record<string, unknown>): PolicyWarning[] {
-  const warnings: PolicyWarning[] = [];
-  const repairs = policy.repairs;
-  if (!Array.isArray(repairs)) {
-    return warnings;
-  }
-
-  if (repairs.length === 0) {
-    warnings.push({
-      code: "empty_repairs",
-      path: "repairs",
-      message: "Policy enables no repairs."
-    });
-  }
-
-  for (const [index, repair] of repairs.entries()) {
-    if (typeof repair === "string" && !knownRepairNames.has(repair)) {
-      warnings.push({
-        code: "unknown_repair",
-        path: `repairs[${index}]`,
-        message: `Policy references unknown repair ${repair}.`
-      });
+  return repairDiagnostics(policy.repairs).map((diagnostic) => {
+    if (diagnostic.kind === "empty_repairs") {
+      return {
+        code: "empty_repairs",
+        path: "repairs",
+        message: "Policy enables no repairs."
+      };
     }
-  }
 
-  return warnings;
+    return {
+      code: "unknown_repair",
+      path: `repairs[${diagnostic.index}]`,
+      message: `Policy references unknown repair ${diagnostic.repair}.`
+    };
+  });
 }
 
 function contextWarnings(policy: Record<string, unknown>): PolicyWarning[] {
@@ -160,76 +145,46 @@ function contextWarnings(policy: Record<string, unknown>): PolicyWarning[] {
     });
   }
 
-  const thresholds = contextThresholds(policy);
-  for (let index = 0; index < orderedThresholdKeys.length - 1; index += 1) {
-    const currentKey = orderedThresholdKeys[index];
-    const nextKey = orderedThresholdKeys[index + 1];
-    const current = thresholds[currentKey];
-    const next = thresholds[nextKey];
-    if (current !== undefined && next !== undefined && current > next) {
-      warnings.push({
-        code: "context_threshold_order",
-        path: `context.thresholds.${nextKey}`,
-        message: `${nextKey} must be greater than or equal to ${currentKey}.`
-      });
-    }
+  for (const violation of contextThresholdOrderViolations(policy)) {
+    warnings.push({
+      code: "context_threshold_order",
+      path: `context.thresholds.${violation.nextKey}`,
+      message: `${violation.nextKey} must be greater than or equal to ${violation.currentKey}.`
+    });
   }
 
   return warnings;
 }
 
-function providerOverrideWarnings(value: unknown): PolicyWarning[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const warnings: PolicyWarning[] = [];
-  const seenProviderIndexes = new Map<string, number>();
-
-  for (const [index, item] of value.entries()) {
-    if (!isRecord(item)) {
-      continue;
-    }
-
-    const providerId = stringValue(item.providerId);
-    if (providerId !== undefined) {
-      if (!knownProviderIds.has(providerId)) {
-        warnings.push({
+function providerOverrideWarnings(overrides: unknown): PolicyWarning[] {
+  return providerOverrideDiagnostics(overrides).map((diagnostic) => {
+    switch (diagnostic.kind) {
+      case "unknown_provider_override":
+        return {
           code: "unknown_provider_override",
-          path: `providerOverrides[${index}].providerId`,
-          message: `Provider override references unknown providerId ${providerId}.`
-        });
-      }
-
-      const firstIndex = seenProviderIndexes.get(providerId);
-      if (firstIndex !== undefined) {
-        warnings.push({
+          path: `providerOverrides[${diagnostic.index}].providerId`,
+          message: `Provider override references unknown providerId ${diagnostic.providerId}.`
+        };
+      case "duplicate_provider_override":
+        return {
           code: "duplicate_provider_override",
-          path: `providerOverrides[${index}].providerId`,
-          message: `Duplicate provider override for ${providerId}; first entry is at providerOverrides[${firstIndex}].`
-        });
-      } else {
-        seenProviderIndexes.set(providerId, index);
-      }
+          path: `providerOverrides[${diagnostic.index}].providerId`,
+          message: `Duplicate provider override for ${diagnostic.providerId}; first entry is at providerOverrides[${diagnostic.firstIndex}].`
+        };
+      case "provider_override_no_effective_change":
+        return {
+          code: "provider_override_no_effective_change",
+          path: `providerOverrides[${diagnostic.index}].thinking`,
+          message: "Provider override leaves thinking unchanged and has no effective change."
+        };
+      case "invalid_provider_override_thinking":
+        return {
+          code: "invalid_provider_override_thinking",
+          path: `providerOverrides[${diagnostic.index}].thinking`,
+          message: `Provider override uses invalid thinking value ${diagnostic.thinking}.`
+        };
     }
-
-    const thinking = stringValue(item.thinking);
-    if (thinking === "unchanged") {
-      warnings.push({
-        code: "provider_override_no_effective_change",
-        path: `providerOverrides[${index}].thinking`,
-        message: "Provider override leaves thinking unchanged and has no effective change."
-      });
-    } else if (thinking !== undefined && !knownThinkingOverrides.has(thinking)) {
-      warnings.push({
-        code: "invalid_provider_override_thinking",
-        path: `providerOverrides[${index}].thinking`,
-        message: `Provider override uses invalid thinking value ${thinking}.`
-      });
-    }
-  }
-
-  return warnings;
+  });
 }
 
 function providerOverrideSummaries(value: unknown): ProviderOverrideSummary[] {
@@ -255,26 +210,6 @@ function contextSummary(policy: Record<string, unknown>): ModelPolicySummary["co
   };
 }
 
-function contextThresholds(policy: Record<string, unknown>): Record<string, number> {
-  const rawThresholds = firstRecord(
-    policy.contextThresholds,
-    isRecord(policy.context) ? policy.context.thresholds : undefined
-  );
-  if (!rawThresholds) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(rawThresholds).filter((entry): entry is [string, number] => {
-      return typeof entry[1] === "number";
-    })
-  );
-}
-
-function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
-  return values.find(isRecord);
-}
-
 function normalizeOptions(
   options: PolicyInspectionOptions
 ): NormalizedPolicyInspectionOptions {
@@ -289,17 +224,4 @@ function normalizeOptions(
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
 }
