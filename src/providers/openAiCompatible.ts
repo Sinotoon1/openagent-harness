@@ -16,11 +16,16 @@ import type {
 type ModelSlugMap = Record<CanonicalModelId, string>;
 
 interface OpenAIChatCompletionResponse {
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: Array<{
+    finish_reason?: string | null;
+    message?: { content?: string };
+  }>;
+  usage?: unknown;
 }
 
 interface OpenAIChatCompletionChunk {
   choices?: Array<{
+    finish_reason?: string | null;
     delta?: {
       content?: string | null;
       tool_calls?: unknown;
@@ -146,7 +151,12 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
       });
     }
 
-    return { content, raw: data };
+    return {
+      content,
+      usage: data.usage,
+      finishReason: finishReasonFromChoices(data.choices),
+      raw: data
+    };
   }
 
   private async readStreamingResponse(response: Response): Promise<ProviderChatResponse> {
@@ -163,6 +173,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     const contentDeltas: string[] = [];
     const toolCallDeltas: unknown[] = [];
     const chunks: OpenAIChatCompletionChunk[] = [];
+    let finishReason: string | undefined;
     let buffer = "";
     let meaningfulOutputStarted = false;
 
@@ -182,7 +193,10 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
             this.processSseLine(line, {
               contentDeltas,
               toolCallDeltas,
-              chunks
+              chunks,
+              setFinishReason: (value) => {
+                finishReason = value;
+              }
             })
           ) {
             meaningfulOutputStarted = true;
@@ -197,7 +211,10 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
             this.processSseLine(line, {
               contentDeltas,
               toolCallDeltas,
-              chunks
+              chunks,
+              setFinishReason: (value) => {
+                finishReason = value;
+              }
             })
           ) {
             meaningfulOutputStarted = true;
@@ -212,6 +229,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
 
     return {
       content: contentDeltas.join(""),
+      finishReason,
       raw: {
         chunks,
         toolCallDeltas,
@@ -226,6 +244,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
       contentDeltas: string[];
       toolCallDeltas: unknown[];
       chunks: OpenAIChatCompletionChunk[];
+      setFinishReason: (value: string) => void;
     }
   ): boolean {
     const trimmed = line.trim();
@@ -248,6 +267,10 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
     }
 
     output.chunks.push(chunk);
+    const finishReason = finishReasonFromChoices(chunk.choices);
+    if (finishReason) {
+      output.setFinishReason(finishReason);
+    }
     return this.collectMeaningfulDeltas(chunk, output);
   }
 
@@ -321,4 +344,12 @@ function safeHttpErrorMessage(
 ): string {
   const retryability = retryable ? "retryable" : "non_retryable";
   return `Provider ${providerId} returned HTTP ${status} ${fallbackPhase} (${retryability}).`;
+}
+
+function finishReasonFromChoices(
+  choices: Array<{ finish_reason?: string | null }> | undefined
+): string | undefined {
+  const finishReason = choices?.find((choice) => typeof choice.finish_reason === "string")
+    ?.finish_reason;
+  return finishReason ?? undefined;
 }

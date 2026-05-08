@@ -22,6 +22,8 @@ export interface ProviderChatRequest {
 
 export interface ProviderChatResponse {
   content: string;
+  usage?: unknown;
+  finishReason?: string;
   raw?: unknown;
 }
 

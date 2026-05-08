@@ -107,6 +107,13 @@ smoke-test guidance.
 }
 ```
 
+Successful `oss_chat` responses are shaped by default: they include the model
+output and safe routing metadata, but not the full raw provider payload. Set
+`includeRawProviderResponse: true` only for debugging; the returned
+`rawProviderResponsePreview` uses stricter provider-preview sanitization and is
+bounded, not an unbounded provider response dump. Raw/debug containers such as
+`raw`, `data`, `response`, and `debug` are summarized rather than returned.
+
 ### `repair_tool_input`
 
 ```json

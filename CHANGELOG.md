@@ -1,3 +1,35 @@
+## oss-agent-harness-mcp v1.0.0-candidate.17
+
+This candidate release shapes successful `oss_chat` responses so raw provider
+payloads are hidden by default while preserving explicit debug visibility.
+
+### Changed
+
+- `oss_chat` success responses now return collected model content and safe
+  routing metadata by default, without a full `raw` provider payload.
+- Added `includeRawProviderResponse`, defaulting to `false`, for explicit debug
+  previews.
+- Debug previews are returned as `rawProviderResponsePreview` and are sanitized
+  and bounded for depth, array length, object keys, and string length.
+- Raw/debug provider containers named `raw`, `data`, `response`, or `debug` are
+  summarized in debug previews instead of traversed.
+- OpenAI-compatible responses now surface safe `usage` and `finishReason`
+  metadata when available.
+
+### Preserved
+
+- Provider routing, fallback semantics, streaming parser behavior, telemetry
+  semantics, JSONL behavior, repair behavior, context compaction, MCP tool
+  names, schema descriptor behavior, policy behavior, and provider request
+  behavior are unchanged.
+- Raw provider response bodies from HTTP errors remain hidden as in
+  candidate.16.
+
+### Validation
+
+- `npm test`: 10 test files passed, 147 tests passed.
+- `npm run build`: passed.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.16
 
 This candidate release fixes MCP-visible provider HTTP error reporting so raw

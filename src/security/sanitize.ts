@@ -19,14 +19,25 @@ const secretKeyFragments = [
 
 const riskyFieldNames = new Set([
   "messages",
+  "prompt",
+  "prompts",
   "content",
   "filecontent",
   "filecontents",
+  "arguments",
   "command",
   "stdout",
   "stderr",
   "headers",
   "env"
+]);
+
+const providerPreviewRiskyFieldNames = new Set([
+  ...riskyFieldNames,
+  "raw",
+  "data",
+  "response",
+  "debug"
 ]);
 
 export interface SanitizeOptions {
@@ -45,6 +56,13 @@ interface SanitizeLimits {
 
 export function sanitizeForResponse(input: unknown, options: SanitizeOptions = {}): unknown {
   return sanitizeValue(input, normalizeOptions(options), 0);
+}
+
+export function sanitizeProviderPreview(
+  input: unknown,
+  options: SanitizeOptions = {}
+): unknown {
+  return sanitizeProviderPreviewValue(input, normalizeOptions(options), 0);
 }
 
 export function sanitizeMetadata(
@@ -126,6 +144,130 @@ function sanitizeArray(value: unknown[], limits: SanitizeLimits, depth: number):
   return output;
 }
 
+function sanitizeProviderPreviewValue(
+  value: unknown,
+  limits: SanitizeLimits,
+  depth: number
+): unknown {
+  if (typeof value === "string") {
+    return sanitizeString(value, limits.maxStringLength);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  if (depth >= limits.maxDepth) {
+    return "<omitted:max-depth>";
+  }
+
+  if (Array.isArray(value)) {
+    return sanitizeProviderPreviewArray(value, limits, depth);
+  }
+
+  if (!isRecord(value)) {
+    return String(value);
+  }
+
+  return sanitizeProviderPreviewObject(value, limits, depth);
+}
+
+function sanitizeProviderPreviewObject(
+  value: Record<string, unknown>,
+  limits: SanitizeLimits,
+  depth: number
+): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+  const entries = Object.entries(value).slice(0, limits.maxObjectKeys);
+
+  for (const [key, nested] of entries) {
+    if (isSecretKey(key)) {
+      output[key] = redactedValue;
+      continue;
+    }
+
+    if (isProviderPreviewRiskyField(key)) {
+      output[key] = summarizeProviderPreviewRiskyField(key, nested);
+      continue;
+    }
+
+    if (normalizeKey(key) === "usage") {
+      output[key] = sanitizeProviderPreviewUsage(nested, limits, depth + 1);
+      continue;
+    }
+
+    output[key] = sanitizeProviderPreviewValue(nested, limits, depth + 1);
+  }
+
+  const omittedKeys = Object.keys(value).length - entries.length;
+  if (omittedKeys > 0) {
+    output.__omittedKeys = omittedKeys;
+  }
+
+  return output;
+}
+
+function sanitizeProviderPreviewUsage(
+  value: unknown,
+  limits: SanitizeLimits,
+  depth: number
+): unknown {
+  if (typeof value === "string") {
+    return sanitizeString(value, limits.maxStringLength);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  if (depth >= limits.maxDepth) {
+    return "<omitted:max-depth>";
+  }
+
+  if (Array.isArray(value)) {
+    return sanitizeProviderPreviewArray(value, limits, depth);
+  }
+
+  if (!isRecord(value)) {
+    return String(value);
+  }
+
+  const output: Record<string, unknown> = {};
+  const entries = Object.entries(value).slice(0, limits.maxObjectKeys);
+  for (const [key, nested] of entries) {
+    if (isSecretKey(key) && typeof nested !== "number") {
+      output[key] = redactedValue;
+      continue;
+    }
+
+    output[key] = sanitizeProviderPreviewUsage(nested, limits, depth + 1);
+  }
+
+  const omittedKeys = Object.keys(value).length - entries.length;
+  if (omittedKeys > 0) {
+    output.__omittedKeys = omittedKeys;
+  }
+
+  return output;
+}
+
+function sanitizeProviderPreviewArray(
+  value: unknown[],
+  limits: SanitizeLimits,
+  depth: number
+): unknown[] {
+  const output = value
+    .slice(0, limits.maxArrayLength)
+    .map((item) => sanitizeProviderPreviewValue(item, limits, depth + 1));
+
+  const omittedItems = value.length - output.length;
+  if (omittedItems > 0) {
+    output.push(`<omitted:${omittedItems}:items>`);
+  }
+
+  return output;
+}
+
 function summarizeRiskyField(key: string, value: unknown): string {
   const normalized = normalizeKey(key);
 
@@ -146,6 +288,28 @@ function summarizeRiskyField(key: string, value: unknown): string {
   }
 
   return `<omitted:${normalized}:${typeof value}>`;
+}
+
+function summarizeProviderPreviewRiskyField(key: string, value: unknown): string {
+  const normalized = normalizeKey(key);
+
+  if (value === null || value === undefined) {
+    return `<summarized:${normalized}:empty>`;
+  }
+
+  if (typeof value === "string") {
+    return `<summarized:${normalized}:${value.length}:chars>`;
+  }
+
+  if (Array.isArray(value)) {
+    return `<summarized:${normalized}:${value.length}:items>`;
+  }
+
+  if (isRecord(value)) {
+    return `<summarized:${normalized}:${Object.keys(value).length}:keys>`;
+  }
+
+  return `<summarized:${normalized}:${typeof value}>`;
 }
 
 function sanitizeString(value: string, maxStringLength: number): string {
@@ -178,6 +342,10 @@ function isSecretKey(key: string): boolean {
 
 function isRiskyField(key: string): boolean {
   return riskyFieldNames.has(normalizeKey(key));
+}
+
+function isProviderPreviewRiskyField(key: string): boolean {
+  return providerPreviewRiskyFieldNames.has(normalizeKey(key));
 }
 
 function normalizeKey(key: string): string {

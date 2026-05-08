@@ -58,7 +58,7 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
       }
 
       try {
-        return asJsonText(await deps.router.route(parsed.data));
+        return asPreSanitizedJsonText(await deps.router.route(parsed.data));
       } catch (error) {
         return asJsonText(
           {
@@ -521,7 +521,7 @@ function toRepairToolResponse(
 
 const expectedShapes = {
   oss_chat:
-    "{ modelId: canonicalModelId; sessionId: string; messages: ChatMessage[]; providerPriority?: ProviderId[]; capabilities?: CapabilityFlags; temperature?: number; maxTokens?: number; metadata?: object }",
+    "{ modelId: canonicalModelId; sessionId: string; messages: ChatMessage[]; providerPriority?: ProviderId[]; capabilities?: CapabilityFlags; temperature?: number; maxTokens?: number; streaming?: { enabled?: boolean }; includeRawProviderResponse?: boolean; metadata?: object }",
   repair_tool_input:
     "{ modelId: canonicalModelId; input: unknown; sessionId?: string; schemaName?: oss_chat | readFile | writeFile | pathBatch; schemaDescriptor?: { toolName: string; schema: callerRepairSchema; pathStringFields?: string[]; pathStringArrayFields?: string[] }; provide exactly one of schemaName or schemaDescriptor }",
   compact_context:

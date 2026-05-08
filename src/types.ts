@@ -48,6 +48,7 @@ export interface OssChatInput {
   streaming?: {
     enabled?: boolean;
   };
+  includeRawProviderResponse?: boolean;
   metadata?: Record<string, unknown>;
 }
 
@@ -55,6 +56,8 @@ export interface OssChatOutput {
   modelId: CanonicalModelId;
   providerId: ProviderId;
   content: string;
+  usage?: unknown;
+  finishReason?: string;
   capabilities: CapabilityFlags;
   droppedCapabilities: CapabilityName[];
   attempts: Array<{
@@ -63,5 +66,5 @@ export interface OssChatOutput {
     fallbackPhase?: FallbackPhase;
     errorMessage?: string;
   }>;
-  raw?: unknown;
+  rawProviderResponsePreview?: unknown;
 }

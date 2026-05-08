@@ -42,6 +42,7 @@ export const ossChatInputSchema = z
       })
       .strict()
       .optional(),
+    includeRawProviderResponse: z.boolean().default(false),
     metadata: z.record(z.string(), z.unknown()).optional()
   })
   .strict();
@@ -90,11 +91,19 @@ export const repairSchemaSpecs: Record<RepairSchemaName, RepairSchemaSpec> = {
     name: "oss_chat",
     schema: ossChatInputSchema,
     arrayFields: ["messages", "providerPriority"],
-    optionalFields: ["providerPriority", "capabilities", "temperature", "maxTokens", "metadata"],
+    optionalFields: [
+      "providerPriority",
+      "capabilities",
+      "temperature",
+      "maxTokens",
+      "streaming",
+      "includeRawProviderResponse",
+      "metadata"
+    ],
     pathStringFields: [],
     pathStringArrayFields: [],
     expectedShape:
-      "{ modelId: canonicalModelId; sessionId: string; messages: ChatMessage[]; providerPriority?: ProviderId[]; capabilities?: CapabilityFlags; temperature?: number; maxTokens?: number; streaming?: { enabled?: boolean }; metadata?: object }"
+      "{ modelId: canonicalModelId; sessionId: string; messages: ChatMessage[]; providerPriority?: ProviderId[]; capabilities?: CapabilityFlags; temperature?: number; maxTokens?: number; streaming?: { enabled?: boolean }; includeRawProviderResponse?: boolean; metadata?: object }"
   },
   readFile: {
     name: "readFile",

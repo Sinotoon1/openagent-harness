@@ -106,10 +106,24 @@ safe fields such as provider ID, status, fallback phase, and retryability; raw
 provider response bodies are not included in tool responses or fallback
 telemetry.
 
+Successful `oss_chat` responses are shaped by default. They return the collected
+model text plus safe metadata such as model ID, provider ID, negotiated
+capabilities, dropped capabilities, fallback attempts, usage, and finish reason
+when available. They do not include the full raw provider payload unless the
+caller explicitly sets `includeRawProviderResponse: true`.
+
+When raw provider visibility is requested, the response includes
+`rawProviderResponsePreview` rather than an unbounded raw payload. The preview is
+sanitized with stricter provider-preview rules and bounded for object depth,
+array length, object keys, and string length. Risky fields such as prompts,
+messages, content, headers, env, commands, stdout/stderr, and file contents are
+summarized or redacted. Provider raw/debug containers named `raw`, `data`,
+`response`, or `debug` are also summarized instead of traversed or returned.
+
 Remaining candidate caveats:
 
 - MCP tool responses return collected final text after the provider stream completes rather than incremental MCP streaming.
-- Tool-call deltas are collected as raw provider deltas in `raw.toolCallDeltas`; they are not reconstructed into high-level tool calls yet.
+- Tool-call deltas are collected as raw provider deltas inside the opt-in sanitized `rawProviderResponsePreview`; they are not reconstructed into high-level tool calls yet.
 - OpenAI-style single-line `data:` JSON chunks are supported; SSE spec-style multi-line `data:` JSON events are not yet supported.
 
 Capability negotiation is per-attempt. Each provider attempt gets the strongest

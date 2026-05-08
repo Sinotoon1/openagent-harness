@@ -90,6 +90,378 @@ describe("MCP tools", () => {
     expect(handlers.has("get_harness_stats")).toBe(true);
   });
 
+  describe("oss_chat success response shaping", () => {
+    it("returns clean non-streaming output without the full raw provider payload by default", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          jsonResponse({
+            id: "chatcmpl-raw-success-id",
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "safe model answer" }
+              }
+            ],
+            usage: {
+              prompt_tokens: 3,
+              completion_tokens: 4,
+              total_tokens: 7
+            },
+            provider_internal_trace: "raw-success-trace-123"
+          })
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, { providerPriority: ["providerOne"] });
+      const body = JSON.parse(responseText) as {
+        modelId: string;
+        providerId: string;
+        content: string;
+        usage: Record<string, number>;
+        finishReason: string;
+        raw?: unknown;
+        rawProviderResponsePreview?: unknown;
+      };
+
+      expect(body).toMatchObject({
+        modelId: "kimi-k2-6",
+        providerId: "providerOne",
+        content: "safe model answer",
+        usage: {
+          prompt_tokens: 3,
+          completion_tokens: 4,
+          total_tokens: 7
+        },
+        finishReason: "stop"
+      });
+      expect(body.raw).toBeUndefined();
+      expect(body.rawProviderResponsePreview).toBeUndefined();
+      expect(responseText).not.toContain("chatcmpl-raw-success-id");
+      expect(responseText).not.toContain("raw-success-trace-123");
+    });
+
+    it("returns clean streaming output without the full raw provider payload by default", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          sseResponse([
+            sseData({
+              choices: [
+                {
+                  delta: { content: "streamed" },
+                  provider_internal_trace: "stream-raw-trace-456"
+                }
+              ]
+            }),
+            sseData({
+              choices: [{ delta: { content: " answer" }, finish_reason: "stop" }]
+            }),
+            "data: [DONE]\n\n"
+          ])
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne"],
+        streaming: { enabled: true }
+      });
+      const body = JSON.parse(responseText) as {
+        content: string;
+        finishReason: string;
+        raw?: unknown;
+        rawProviderResponsePreview?: unknown;
+      };
+
+      expect(body.content).toBe("streamed answer");
+      expect(body.finishReason).toBe("stop");
+      expect(body.raw).toBeUndefined();
+      expect(body.rawProviderResponsePreview).toBeUndefined();
+      expect(responseText).not.toContain("stream-raw-trace-456");
+      expect(responseText).not.toContain("chunks");
+    });
+
+    it("returns only a sanitized bounded raw provider preview when explicitly requested", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          jsonResponse({
+            id: "chatcmpl-debug-preview-id",
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: "debug model answer"
+                }
+              }
+            ],
+            usage: {
+              prompt_tokens: 5,
+              completion_tokens: 5,
+              total_tokens: 10
+            },
+            prompt: "private prompt that must not be returned raw",
+            messages: [{ role: "user", content: "private message body" }],
+            headers: {
+              authorization: "Bearer raw-header-token-12345"
+            },
+            env: {
+              PROVIDER_API_KEY: "raw-env-secret-value"
+            },
+            metadata: {
+              note: "Bearer raw-secret-shaped-value",
+              longValue: "x".repeat(250)
+            },
+            tool_calls: [
+              {
+                function: {
+                  name: "run",
+                  arguments: "deploy --token raw-tool-call-token"
+                }
+              }
+            ],
+            largeArray: [1, 2, 3, 4, 5, 6, 7],
+            nested: {
+              a: {
+                b: {
+                  c: {
+                    d: {
+                      e: "too deep"
+                    }
+                  }
+                }
+              }
+            }
+          })
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne"],
+        includeRawProviderResponse: true
+      });
+      const body = JSON.parse(responseText) as {
+        content: string;
+        raw?: unknown;
+        rawProviderResponsePreview?: {
+          choices?: Array<{ message?: { content?: string } }>;
+          prompt?: string;
+          messages?: string;
+          headers?: string;
+          env?: string;
+          metadata?: { note?: string; longValue?: string };
+          tool_calls?: Array<{ function?: { arguments?: string } }>;
+          largeArray?: unknown[];
+          nested?: unknown;
+        };
+      };
+
+      expect(body.content).toBe("debug model answer");
+      expect(body.raw).toBeUndefined();
+      expect(body.rawProviderResponsePreview).toBeDefined();
+      expect(body.rawProviderResponsePreview?.choices?.[0]?.message?.content).toMatch(
+        /^<summarized:content:/
+      );
+      expect(body.rawProviderResponsePreview?.prompt).toMatch(/^<summarized:prompt:/);
+      expect(body.rawProviderResponsePreview?.messages).toMatch(/^<summarized:messages:/);
+      expect(body.rawProviderResponsePreview?.headers).toMatch(/^<summarized:headers:/);
+      expect(body.rawProviderResponsePreview?.env).toMatch(/^<summarized:env:/);
+      expect(body.rawProviderResponsePreview?.metadata?.note).toBe("<redacted>");
+      expect(body.rawProviderResponsePreview?.metadata?.longValue).toContain("<truncated:");
+      expect(body.rawProviderResponsePreview?.tool_calls?.[0]?.function?.arguments).toMatch(
+        /^<summarized:arguments:/
+      );
+      expect(body.rawProviderResponsePreview?.largeArray).toContain("<omitted:2:items>");
+      expect(JSON.stringify(body.rawProviderResponsePreview?.nested)).toContain(
+        "<omitted:max-depth>"
+      );
+      expect(responseText).not.toContain("private prompt that must not be returned raw");
+      expect(responseText).not.toContain("private message body");
+      expect(responseText).not.toContain("raw-header-token-12345");
+      expect(responseText).not.toContain("raw-env-secret-value");
+      expect(responseText).not.toContain("raw-secret-shaped-value");
+      expect(responseText).not.toContain("raw-tool-call-token");
+      expect(responseText).not.toContain("too deep");
+    });
+
+    it("summarizes raw provider data containers in explicit debug previews", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          jsonResponse({
+            id: "chatcmpl-safe-metadata-id",
+            model: "providerOne-kimi",
+            created: 1234567890,
+            object: "chat.completion",
+            status: "completed",
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "container-safe answer" }
+              }
+            ],
+            usage: {
+              prompt_tokens: 2,
+              completion_tokens: 3,
+              total_tokens: 5
+            },
+            data: "User prompt: private data prompt leak marker data-leak-001",
+            response: {
+              text: "User prompt: private response prompt leak marker response-leak-002"
+            },
+            debug: [
+              "User prompt: private debug prompt leak marker debug-leak-003"
+            ],
+            raw: {
+              note: "raw provider marker raw-note-leak-004",
+              token: "Bearer raw-debug-token-12345"
+            }
+          })
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne"],
+        includeRawProviderResponse: true
+      });
+      const body = JSON.parse(responseText) as {
+        providerId: string;
+        content: string;
+        usage: Record<string, number>;
+        finishReason: string;
+        rawProviderResponsePreview?: {
+          id?: string;
+          model?: string;
+          created?: number;
+          object?: string;
+          status?: string;
+          usage?: Record<string, number>;
+          data?: string;
+          response?: string;
+          debug?: string;
+          raw?: string;
+        };
+      };
+
+      expect(body.providerId).toBe("providerOne");
+      expect(body.content).toBe("container-safe answer");
+      expect(body.usage).toEqual({
+        prompt_tokens: 2,
+        completion_tokens: 3,
+        total_tokens: 5
+      });
+      expect(body.finishReason).toBe("stop");
+      expect(body.rawProviderResponsePreview).toMatchObject({
+        id: "chatcmpl-safe-metadata-id",
+        model: "providerOne-kimi",
+        created: 1234567890,
+        object: "chat.completion",
+        status: "completed",
+        usage: {
+          prompt_tokens: 2,
+          completion_tokens: 3,
+          total_tokens: 5
+        },
+        data: expect.stringMatching(/^<summarized:data:/),
+        response: expect.stringMatching(/^<summarized:response:/),
+        debug: expect.stringMatching(/^<summarized:debug:/),
+        raw: expect.stringMatching(/^<summarized:raw:/)
+      });
+      expect(responseText).not.toContain("data-leak-001");
+      expect(responseText).not.toContain("response-leak-002");
+      expect(responseText).not.toContain("debug-leak-003");
+      expect(responseText).not.toContain("raw-note-leak-004");
+      expect(responseText).not.toContain("raw-debug-token-12345");
+    });
+
+    it("summarizes nested raw data response and debug fields in explicit debug previews", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          jsonResponse({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "nested-safe answer" }
+              }
+            ],
+            wrapper: {
+              data: {
+                promptText: "private nested data prompt nested-data-leak-001"
+              },
+              child: {
+                response: "private nested response prompt nested-response-leak-002",
+                deeper: {
+                  debug: {
+                    trace: "private nested debug prompt nested-debug-leak-003"
+                  },
+                  raw: {
+                    note: "private nested raw marker nested-raw-leak-004",
+                    apiKey: "raw-nested-api-key"
+                  }
+                }
+              }
+            }
+          })
+        )
+      );
+      const { handlers } = makeRegisteredToolsWithProviders([
+        createOpenAIProvider("providerOne", "https://provider-one.example/v1")
+      ]);
+
+      const responseText = await callOssChat(handlers, {
+        providerPriority: ["providerOne"],
+        includeRawProviderResponse: true
+      });
+      const body = JSON.parse(responseText) as {
+        content: string;
+        rawProviderResponsePreview?: {
+          wrapper?: {
+            data?: string;
+            child?: {
+              response?: string;
+              deeper?: {
+                debug?: string;
+                raw?: string;
+              };
+            };
+          };
+        };
+      };
+
+      expect(body.content).toBe("nested-safe answer");
+      expect(body.rawProviderResponsePreview?.wrapper?.data).toMatch(
+        /^<summarized:data:/
+      );
+      expect(body.rawProviderResponsePreview?.wrapper?.child?.response).toMatch(
+        /^<summarized:response:/
+      );
+      expect(body.rawProviderResponsePreview?.wrapper?.child?.deeper?.debug).toMatch(
+        /^<summarized:debug:/
+      );
+      expect(body.rawProviderResponsePreview?.wrapper?.child?.deeper?.raw).toMatch(
+        /^<summarized:raw:/
+      );
+      expect(responseText).not.toContain("nested-data-leak-001");
+      expect(responseText).not.toContain("nested-response-leak-002");
+      expect(responseText).not.toContain("nested-debug-leak-003");
+      expect(responseText).not.toContain("nested-raw-leak-004");
+      expect(responseText).not.toContain("raw-nested-api-key");
+    });
+  });
+
   describe("oss_chat provider error sanitization", () => {
     it("does not return non-streaming HTTP error bodies through oss_chat", async () => {
       const rawBody = "plain provider body with customer metadata raw-body-123";
