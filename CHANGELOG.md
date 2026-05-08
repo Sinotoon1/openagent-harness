@@ -1,3 +1,37 @@
+## oss-agent-harness-mcp v1.0.0-candidate.20
+
+This candidate release adds real-provider smoke-test documentation and MCP
+effectiveness measurement guidance.
+
+### Added
+
+- Added `docs/provider-smoke-results.md` with current local DeepSeek primary
+  findings, provider matrix, unsupported-model interpretation, and sanitized raw
+  preview expectations.
+- Added `docs/mcp-effectiveness-smoke-tests.md` for comparing baseline direct
+  provider usage against MCP harness usage, including repair, telemetry,
+  fallback, TTFT, and secret-leakage checks.
+- Documented token overhead categories and the rough
+  `estimatedTokens = Math.ceil(charCount / 4)` formula.
+- Added `scripts/estimate-json-tokens.mjs`, a no-dependency local helper for
+  estimating JSON payload token overhead from a file or stdin. It is not included
+  in package files.
+- Linked the new docs from `README.md`.
+
+### Preserved
+
+- No runtime behavior changes were made.
+- Provider routing, fallback semantics, streaming parser behavior, telemetry
+  semantics, JSONL behavior, repair behavior, context compaction, MCP tool
+  names, schema descriptor behavior, policy behavior, and provider config loading
+  behavior are unchanged.
+
+### Validation
+
+- `npm test`: 10 test files passed, 159 tests passed.
+- `npm run build`: passed.
+- `npm pack --dry-run`: passed, 126 files, 81.8 kB package, 390.3 kB unpacked.
+
 ## oss-agent-harness-mcp v1.0.0-candidate.19
 
 This candidate release adds user-editable provider config loading.

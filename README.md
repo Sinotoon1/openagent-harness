@@ -96,7 +96,11 @@ See [docs/provider-matrix.md](docs/provider-matrix.md) for manual provider
 smoke-test guidance. Latest local MCP smoke-test results are recorded in
 [docs/mcp-smoke-test-results.md](docs/mcp-smoke-test-results.md). Local provider
 config examples and PowerShell setup are in
-[docs/provider-local-config.md](docs/provider-local-config.md).
+[docs/provider-local-config.md](docs/provider-local-config.md). Real-provider
+smoke findings are documented in
+[docs/provider-smoke-results.md](docs/provider-smoke-results.md), and internal
+MCP usefulness checks are in
+[docs/mcp-effectiveness-smoke-tests.md](docs/mcp-effectiveness-smoke-tests.md).
 
 ## Usage Examples
 
